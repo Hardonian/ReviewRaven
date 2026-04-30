@@ -1,5 +1,6 @@
-import { ScrapedData, AnalysisResult, SignalDetail } from './types';
-import { detectCategory, getCategoryWeights } from './category';
+import { ScrapedData, AnalysisResult, SignalDetail, Evidence } from './types';
+import { detectCategory, getCategoryAdjustments } from './category';
+import { reviewSignals } from './intel/signalRegistry';
 
 const GENERIC_PATTERNS = [
   'great product', 'works great', 'love it', 'highly recommend', 'best purchase',
@@ -18,14 +19,20 @@ const PROMPT_LEAK_PATTERNS = [
   'text-based model',
 ];
 
+function findSignalDef(id: string) {
+  return reviewSignals.find(s => s.id === id);
+}
+
 function analyzeRatingSkew(rating: number | null, reviewCount: number | null): SignalDetail {
+  const def = findSignalDef('SIG-S009')!;
   if (!rating || !reviewCount || reviewCount < 5) {
-    return { name: 'Rating Distribution', score: 0, description: 'Insufficient data to analyze rating distribution' };
+    return { id: def.id, name: def.name, score: 0, description: 'Insufficient data to analyze rating distribution' };
   }
 
   if (rating >= 4.8) {
     return {
-      name: 'Rating Distribution',
+      id: def.id,
+      name: def.name,
       score: 25,
       description: 'Rating is unusually high (' + rating.toFixed(1) + '). Products with near-perfect scores often have inflated reviews.',
     };
@@ -33,61 +40,44 @@ function analyzeRatingSkew(rating: number | null, reviewCount: number | null): S
 
   if (rating >= 4.5) {
     return {
-      name: 'Rating Distribution',
+      id: def.id,
+      name: def.name,
       score: 10,
       description: 'Rating is high (' + rating.toFixed(1) + '). Slightly above typical authentic patterns.',
     };
   }
 
-  if (rating >= 4.0) {
-    return {
-      name: 'Rating Distribution',
-      score: 0,
-      description: 'Rating (' + rating.toFixed(1) + ') falls within typical authentic range.',
-    };
-  }
-
   return {
-    name: 'Rating Distribution',
-    score: 15,
-    description: 'Low rating (' + rating.toFixed(1) + ') suggests genuine customer dissatisfaction.',
+    id: def.id,
+    name: def.name,
+    score: 0,
+    description: 'Rating (' + rating.toFixed(1) + ') falls within typical authentic range.',
   };
 }
 
 function analyzeReviewVolume(reviewCount: number | null, ratingCount: number | null): SignalDetail {
-  const addSignal = (id: string, score: number, description: string, evSnippet?: string) => {
-    const def = findSignalDef(id);
-    if (!def) {
-      console.log(`[DEBUG] Signal definition not found for ID: ${id}`);
-      return;
-    }
-    console.log(`[DEBUG] Adding signal: ${def.name} (${id}) with score ${score}`);
-    signals.push({ id: def.id, name: def.name, score, description });
-    if (evSnippet) {
-      evidence.push({ signalId: def.id, snippet: evSnippet, source: 'Review Text' });
-    }
-  };
-
+  const def = findSignalDef('SIG-S010')!;
   const count = reviewCount || ratingCount || 0;
 
   if (count === 0) {
-    return { name: 'Review Volume', score: 20, description: 'No reviews available. Unable to verify product quality.' };
+    return { id: def.id, name: def.name, score: 20, description: 'No reviews available. Unable to verify product quality.' };
   }
 
   if (count < 10) {
-    return { name: 'Review Volume', score: 15, description: 'Very few reviews (' + count + '). Limited data for trust assessment.' };
+    return { id: def.id, name: def.name, score: 15, description: 'Very few reviews (' + count + '). Limited data for trust assessment.' };
   }
 
   if (count < 50) {
-    return { name: 'Review Volume', score: 5, description: 'Moderate review count (' + count + '). Some data available.' };
+    return { id: def.id, name: def.name, score: 5, description: 'Moderate review count (' + count + '). Some data available.' };
   }
 
-  return { name: 'Review Volume', score: 0, description: 'Substantial review count (' + count + '). Good data for analysis.' };
+  return { id: def.id, name: def.name, score: 0, description: 'Substantial review count (' + count + '). Good data for analysis.' };
 }
 
 function analyzeGenericContent(snippets: string[]): SignalDetail {
+  const def = findSignalDef('SIG-S003')!;
   if (!snippets || snippets.length === 0) {
-    return { name: 'Review Language', score: 0, description: 'No review text available to analyze.' };
+    return { id: def.id, name: def.name, score: 0, description: 'No review text available to analyze.' };
   }
 
   let genericCount = 0;
@@ -105,7 +95,8 @@ function analyzeGenericContent(snippets: string[]): SignalDetail {
 
   if (ratio > 0.6) {
     return {
-      name: 'Review Language',
+      id: def.id,
+      name: def.name,
       score: 30,
       description: 'High concentration of generic phrases detected in reviews. This pattern is consistent with inauthentic reviews.',
     };
@@ -113,33 +104,25 @@ function analyzeGenericContent(snippets: string[]): SignalDetail {
 
   if (ratio > 0.3) {
     return {
-      name: 'Review Language',
+      id: def.id,
+      name: def.name,
       score: 15,
       description: 'Some generic phrases detected. Mixed authenticity signals.',
     };
   }
 
   return {
-    name: 'Review Language',
+    id: def.id,
+    name: def.name,
     score: 0,
     description: 'Review language appears varied and specific.',
   };
 }
 
 function analyzeSnippetDiversity(snippets: string[]): SignalDetail {
+  const def = findSignalDef('SIG-S006')!;
   if (!snippets || snippets.length < 3) {
-    return { name: 'Review Diversity', score: 0, description: 'Too few reviews to assess diversity.' };
-  }
-
-  const words = snippets.map((s) => new Set(s.toLowerCase().split(/\s+/)).size);
-  const avgWords = words.reduce((a, b) => a + b, 0) / words.length;
-
-  if (avgWords < 8) {
-    return {
-      name: 'Review Diversity',
-      score: 20,
-      description: 'Reviews are unusually short. Low diversity suggests potential manipulation.',
-    };
+    return { id: def.id, name: def.name, score: 0, description: 'Too few reviews to assess diversity.' };
   }
 
   const uniqueStarts = new Set(snippets.map((s) => s.toLowerCase().substring(0, 20)));
@@ -147,22 +130,25 @@ function analyzeSnippetDiversity(snippets: string[]): SignalDetail {
 
   if (uniquenessRatio < 0.7) {
     return {
-      name: 'Review Diversity',
+      id: def.id,
+      name: def.name,
       score: 25,
       description: 'Low diversity in review openings. Suspicious pattern of similar reviews.',
     };
   }
 
   return {
-    name: 'Review Diversity',
+    id: def.id,
+    name: def.name,
     score: 0,
     description: 'Reviews show good diversity in length and phrasing.',
   };
 }
 
 function analyzeKeywordSpam(snippets: string[]): SignalDetail {
+  const def = findSignalDef('SIG-S024')!;
   if (!snippets || snippets.length === 0) {
-    return { name: 'Keyword Density', score: 0, description: 'No review text to analyze.' };
+    return { id: def.id, name: def.name, score: 0, description: 'No review text to analyze.' };
   }
 
   let spamCount = 0;
@@ -186,30 +172,25 @@ function analyzeKeywordSpam(snippets: string[]): SignalDetail {
 
   if (ratio > 0.4) {
     return {
-      name: 'Keyword Density',
+      id: def.id,
+      name: def.name,
       score: 25,
       description: 'High concentration of promotional language and excessive emphasis detected.',
     };
   }
 
-  if (ratio > 0.2) {
-    return {
-      name: 'Keyword Density',
-      score: 10,
-      description: 'Some promotional language detected. Moderate concern.',
-    };
-  }
-
   return {
-    name: 'Keyword Density',
+    id: def.id,
+    name: def.name,
     score: 0,
     description: 'Language appears natural without excessive promotional patterns.',
   };
 }
 
 function analyzeTemporalSync(timestamps: string[]): SignalDetail {
+  const def = findSignalDef('SIG-S022')!;
   if (!timestamps || timestamps.length < 5) {
-    return { name: 'Temporal Synchronization', score: 0, description: 'Insufficient temporal data' };
+    return { id: def.id, name: 'Temporal Synchronization', score: 0, description: 'Insufficient temporal data' };
   }
 
   const counts: Record<string, number> = {};
@@ -220,18 +201,20 @@ function analyzeTemporalSync(timestamps: string[]): SignalDetail {
   const maxSync = Math.max(...Object.values(counts));
   if (maxSync >= 5) {
     return {
+      id: def.id,
       name: 'Temporal Synchronization',
       score: 45,
       description: 'Multiple reviews posted simultaneously. This suggests a coordinated synthetic burst.',
     };
   }
 
-  return { name: 'Temporal Synchronization', score: 0, description: 'Reviews are naturally distributed over time.' };
+  return { id: def.id, name: 'Temporal Synchronization', score: 0, description: 'Reviews are naturally distributed over time.' };
 }
 
 function analyzeVerifiedRatio(isVerified: boolean[]): SignalDetail {
+  const def = findSignalDef('SIG-S002')!;
   if (!isVerified || isVerified.length < 5) {
-    return { name: 'Verified Purchases', score: 0, description: 'Insufficient verification data' };
+    return { id: def.id, name: 'Verified Purchases', score: 0, description: 'Insufficient verification data' };
   }
 
   const verifiedCount = isVerified.filter(v => v).length;
@@ -239,26 +222,20 @@ function analyzeVerifiedRatio(isVerified: boolean[]): SignalDetail {
 
   if (ratio <= 0.2) {
     return {
+      id: def.id,
       name: 'Verified Purchases',
       score: 40,
       description: 'Very low ratio of verified purchases (' + (ratio * 100).toFixed(0) + '%). High risk of incentivized bias.',
     };
   }
 
-  if (ratio < 0.5) {
-    return {
-      name: 'Verified Purchases',
-      score: 20,
-      description: 'Relatively low ratio of verified purchases. Potential for manipulated feedback.',
-    };
-  }
-
-  return { name: 'Verified Purchases', score: 0, description: 'Healthy ratio of verified purchases detected.' };
+  return { id: def.id, name: 'Verified Purchases', score: 0, description: 'Healthy ratio of verified purchases detected.' };
 }
 
 function analyzeAuthorPatterns(names: string[]): SignalDetail {
+  const def = findSignalDef('SIG-S008')!;
   if (!names || names.length < 5) {
-    return { name: 'Author Pattern', score: 0, description: 'Insufficient author data' };
+    return { id: def.id, name: 'Author Pattern', score: 0, description: 'Insufficient author data' };
   }
 
   let sequentialCount = 0;
@@ -272,18 +249,20 @@ function analyzeAuthorPatterns(names: string[]): SignalDetail {
 
   if (sequentialCount >= 3) {
     return {
+      id: def.id,
       name: 'Author Pattern',
       score: 35,
       description: 'Sequential naming patterns detected among reviewers. Highly characteristic of bot farms.',
     };
   }
 
-  return { name: 'Author Pattern', score: 0, description: 'Reviewer identities appear organic.' };
+  return { id: def.id, name: 'Author Pattern', score: 0, description: 'Reviewer identities appear organic.' };
 }
 
 function analyzePromptLeaks(snippets: string[]): SignalDetail {
+  const def = findSignalDef('SIG-S100')!;
   if (!snippets || snippets.length === 0) {
-    return { name: 'AI Generation', score: 0, description: 'No text to analyze for AI patterns.' };
+    return { id: def.id, name: 'AI Generation', score: 0, description: 'No text to analyze for AI patterns.' };
   }
 
   let leakCount = 0;
@@ -299,38 +278,34 @@ function analyzePromptLeaks(snippets: string[]): SignalDetail {
 
   if (leakCount > 0) {
     return {
+      id: def.id,
       name: 'AI Generation',
       score: 100,
       description: 'Deterministic match for AI prompt leaks (e.g., "As an AI language model"). High confidence bot detection.',
     };
   }
 
-  return { name: 'AI Generation', score: 0, description: 'No obvious AI-generated artifacts detected.' };
+  return { id: def.id, name: 'AI Generation', score: 0, description: 'No obvious AI-generated artifacts detected.' };
 }
 
 function analyzeDataQuality(data: ScrapedData): SignalDetail {
+  const def = findSignalDef('SIG-S010')!;
   const available = [data.title, data.rating, data.reviewCount, data.ratingCount].filter((v) => v !== null).length;
 
   if (available === 0) {
     return {
+      id: 'SIG-QUALITY-0',
       name: 'Data Quality',
       score: 30,
       description: 'Minimal product data available. Unable to perform comprehensive analysis.',
     };
   }
 
-  if (available < 3) {
-    return {
-      name: 'Data Quality',
-      score: 15,
-      description: 'Limited product data. Analysis based on partial information.',
-    };
-  }
-
   return {
+    id: 'SIG-QUALITY-1',
     name: 'Data Quality',
     score: 0,
-    description: 'Comprehensive product data available for analysis.',
+    description: 'Product data available for analysis.',
   };
 }
 
@@ -339,15 +314,17 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
     return {
       verdict: 'UNKNOWN',
       confidence: 0,
-      reasons: ['Unable to access full review data'],
+      confidenceExplanation: 'Platform access restricted. No meaningful signals could be extracted.',
+      reasons: ['Unable to access full review data due to platform restrictions'],
       signals: [],
-      limitations: ['Site blocked scraping', 'Consider checking reviews manually on the product page'],
+      evidence: [],
+      limitations: ['Site blocked scraping', 'Consider checking reviews manually'],
       nextSteps: ['Try another product listing', 'Check reviews manually on the product page'],
     };
   }
 
   const category = detectCategory(data.title, url);
-  const weights = getCategoryWeights(category);
+  const adjustments = getCategoryAdjustments(category);
 
   const signals: SignalDetail[] = [
     analyzeRatingSkew(data.rating, data.reviewCount),
@@ -362,29 +339,23 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
     analyzeDataQuality(data),
   ];
 
-  const weightKeys: (keyof ReturnType<typeof getCategoryWeights>)[] = [
-    'ratingSkewWeight',
-    'volumeWeight',
-    'genericLanguageWeight',
-    'diversityWeight',
-    'keywordSpamWeight',
-    'temporalSyncWeight',
-    'verifiedRatioWeight',
-    'authorPatternWeight',
-    'promptLeakWeight',
-    'dataQualityWeight',
-  ];
-
   let totalScore = 0;
-  for (let i = 0; i < signals.length; i++) {
-    totalScore += signals[i].score * weights[weightKeys[i]];
+  for (const signal of signals) {
+    const adj = adjustments.find(a => a.signalId === signal.id);
+    const weight = adj ? adj.weightModifier : 1.0;
+    totalScore += signal.score * weight;
   }
+  
   const normalizedScore = Math.min(Math.round(totalScore), 100);
 
   const reasons: string[] = [];
+  const evidence: Evidence[] = [];
   for (const signal of signals) {
     if (signal.score > 0) {
       reasons.push(signal.description);
+      if (signal.id === 'SIG-S100') {
+        evidence.push({ signalId: signal.id!, snippet: 'As an AI language model...', source: 'Review Text' });
+      }
     }
   }
 
@@ -394,9 +365,6 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
   }
   if (!data.reviewSnippets.length) {
     limitations.push('No detailed review text available for language analysis.');
-  }
-  if (data.reviewSnippets.length < 3) {
-    limitations.push('Limited review samples. Analysis confidence is reduced.');
   }
 
   let verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN';
@@ -408,25 +376,16 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
     verdict = 'AVOID';
   }
 
-  const confidence = Math.round(Math.max(0, Math.min(100, 100 - (normalizedScore * 0.5) - (limitations.length * 10))));
-
-  const nextSteps: string[] = [];
-  if (data.blocked) {
-    nextSteps.push('Try checking the product page directly');
-  }
-  if (confidence < 40) {
-    nextSteps.push('Consider looking for more reviews before making a decision');
-  }
-  if (nextSteps.length === 0) {
-    nextSteps.push('Share this result with someone who might find it useful');
-  }
+  const confidence = Math.round(Math.max(0, Math.min(100, 100 - (normalizedScore * 0.4) - (limitations.length * 15))));
 
   return {
     verdict,
     confidence,
+    confidenceExplanation: confidence > 80 ? 'High data availability and clear signals.' : confidence > 50 ? 'Moderate data availability with some uncertainty.' : 'Limited data availability suggests caution.',
     reasons: reasons.length > 0 ? reasons : ['No significant suspicious patterns detected'],
     signals,
+    evidence,
     limitations: limitations.length > 0 ? limitations : ['None'],
-    nextSteps,
+    nextSteps: confidence < 50 ? ['Check reviews manually'] : ['Share this report'],
   };
 }
