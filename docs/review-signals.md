@@ -5,16 +5,19 @@ ReviewGhost analyzes multiple signals to detect suspicious review patterns.
 ## Signals Detected
 
 ### 1. Rating Distribution
+
 - Checks if average rating is unusually high
 - Authentic products typically have ratings between 3.8–4.5
 - Near-perfect ratings (4.8+) often indicate review manipulation
 
 ### 2. Review Volume
+
 - Products with very few reviews have insufficient data
 - A minimum of 10+ reviews is needed for reasonable confidence
 - Higher review counts improve analysis reliability
 
 ### 3. Review Language
+
 - Detects stock phrases common in fake reviews:
   - "Great product!" / "Love it!" / "Highly recommend"
   - "Exactly as described" / "Fast shipping"
@@ -22,11 +25,13 @@ ReviewGhost analyzes multiple signals to detect suspicious review patterns.
 - High concentration of these phrases is a low trust signal
 
 ### 4. Review Diversity
+
 - Authentic reviews vary in length and phrasing
 - Fake reviews often share similar openings or structure
 - Measures uniqueness of review beginnings and average word count
 
 ### 5. Keyword Density
+
 - Detects promotional language patterns:
   - Excessive calls-to-action ("Buy now!", "Get yours!")
   - Superlatives in all caps ("AMAZING!!!", "PERFECT!!!")
@@ -34,6 +39,7 @@ ReviewGhost analyzes multiple signals to detect suspicious review patterns.
 - High promotional content suggests manufactured reviews
 
 ### 6. Data Quality
+
 - Assesses completeness of available product data
 - Missing title, rating, or review counts reduce confidence
 - Partial data leads to more cautious verdicts
