@@ -11,16 +11,25 @@ export interface ScrapedData {
 }
 
 export interface SignalDetail {
+  id?: string;
   name: string;
   score: number;
   description: string;
 }
 
+export interface Evidence {
+  signalId: string;
+  snippet: string;
+  source: string;
+}
+
 export interface AnalysisResult {
   verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN';
   confidence: number;
+  confidenceExplanation?: string;
   reasons: string[];
   signals: SignalDetail[];
+  evidence?: Evidence[];
   limitations: string[];
   nextSteps: string[];
 }
