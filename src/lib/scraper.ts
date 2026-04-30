@@ -1,7 +1,9 @@
 import { ScrapedData } from './types';
 
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const DESKTOP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const MOBILE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
 const FETCH_TIMEOUT_MS = 10000;
+const MAX_CONTENT_LENGTH = 5 * 1024 * 1024; // 5MB limit
 
 function timeoutSignal(ms: number): AbortController {
   const controller = new AbortController();
@@ -11,6 +13,8 @@ function timeoutSignal(ms: number): AbortController {
 
 function sanitizeText(text: string): string {
   return text
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
     .replace(/<[^>]*>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -37,92 +41,106 @@ function getMetaContent(html: string, selector: string): string | null {
   return null;
 }
 
-function extractAmazonData(html: string): Partial<ScrapedData> {
-  const result: Partial<ScrapedData> = {};
-
-  const title =
-    getMetaContent(html, 'og:title') ||
-    getMetaContent(html, 'product:name') ||
-    (() => {
-      const m = html.match(/<span[^>]*id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i);
-      return m ? sanitizeText(m[1]) : null;
-    })();
-  if (title) result.title = title;
-
-  const ratingMatch = html.match(/"ratingValue"\s*:\s*"([\d.]+)"/i);
-  if (ratingMatch) result.rating = parseFloat(ratingMatch[1]);
-
-  const ratingCountMatch = html.match(/"ratingCount"\s*:\s*"([\d,]+)"/i);
-  if (ratingCountMatch) result.ratingCount = extractNumber(ratingCountMatch[1]);
-
-  const reviewCountMatch = html.match(/"reviewCount"\s*:\s*"([\d,]+)"/i);
-  if (reviewCountMatch) result.reviewCount = extractNumber(reviewCountMatch[1]);
-
-  const reviewSnippets: string[] = [];
-  const reviewRegex = /<span[^>]*data-hook=["']review-body["'][^>]*>([\s\S]*?)<\/span>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = reviewRegex.exec(html)) !== null && reviewSnippets.length < 5) {
-    const text = sanitizeText(m[1]);
-    if (text) reviewSnippets.push(text);
+function extractJsonLd(html: string): any {
+  const matches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  if (!matches) return null;
+  
+  for (const match of matches) {
+    const innerMatch = match.match(/>([\s\S]*?)</);
+    if (innerMatch) {
+      try {
+        const data = JSON.parse(innerMatch[1]);
+        // simple heuristic to find product
+        if (data['@type'] === 'Product' || (Array.isArray(data) && data.some(d => d['@type'] === 'Product'))) {
+          return Array.isArray(data) ? data.find(d => d['@type'] === 'Product') : data;
+        }
+      } catch (e) {
+        // parsing failed, try next
+      }
+    }
   }
-  if (reviewSnippets.length > 0) result.reviewSnippets = reviewSnippets;
-
-  const timestamps: string[] = [];
-  const tsRegex = /<span[^>]*data-hook=["']review-date["'][^>]*>([\s\S]*?)<\/span>/gi;
-  let ts: RegExpExecArray | null;
-  while ((ts = tsRegex.exec(html)) !== null && timestamps.length < 10) {
-    const text = sanitizeText(ts[1]);
-    if (text) timestamps.push(text);
-  }
-  if (timestamps.length > 0) result.timestamps = timestamps;
-
-  const reviewerNames: string[] = [];
-  const nameRegex = /<span[^>]*class=["']a-profile-name["'][^>]*>([\s\S]*?)<\/span>/gi;
-  let name: RegExpExecArray | null;
-  while ((name = nameRegex.exec(html)) !== null && reviewerNames.length < 10) {
-    const text = sanitizeText(name[1]);
-    if (text) reviewerNames.push(text);
-  }
-  if (reviewerNames.length > 0) result.reviewerNames = reviewerNames;
-
-  const isVerified: boolean[] = [];
-  const verifiedRegex = /<span[^>]*data-hook=["']avp-badge["'][^>]*>([\s\S]*?)<\/span>/gi;
-  let verified: RegExpExecArray | null;
-  while ((verified = verifiedRegex.exec(html)) !== null && isVerified.length < 10) {
-    const text = sanitizeText(verified[1]);
-    isVerified.push(text.toLowerCase().includes('verified purchase'));
-  }
-  if (isVerified.length > 0) result.isVerified = isVerified;
-
-  return result;
+  return null;
 }
 
-function extractWalmartData(html: string): Partial<ScrapedData> {
-  const result: Partial<ScrapedData> = {};
+function parseFromHtmlAndJsonLd(html: string, site: string): Partial<ScrapedData> {
+  const result: Partial<ScrapedData> = {
+    reviewSnippets: [],
+    timestamps: [],
+    reviewerNames: [],
+    isVerified: []
+  };
 
-  const title = getMetaContent(html, 'og:title');
-  if (title) result.title = title;
+  const jsonLd = extractJsonLd(html);
+  
+  if (jsonLd) {
+    if (jsonLd.name) result.title = sanitizeText(jsonLd.name);
+    if (jsonLd.aggregateRating) {
+      if (jsonLd.aggregateRating.ratingValue) result.rating = parseFloat(jsonLd.aggregateRating.ratingValue);
+      if (jsonLd.aggregateRating.reviewCount) result.reviewCount = parseInt(jsonLd.aggregateRating.reviewCount, 10);
+      if (jsonLd.aggregateRating.ratingCount) result.ratingCount = parseInt(jsonLd.aggregateRating.ratingCount, 10);
+    }
+    
+    if (jsonLd.review && Array.isArray(jsonLd.review)) {
+      for (const rev of jsonLd.review) {
+        if (rev.reviewBody && result.reviewSnippets!.length < 10) {
+          result.reviewSnippets!.push(sanitizeText(rev.reviewBody));
+          if (rev.datePublished) result.timestamps!.push(rev.datePublished);
+          if (rev.author && rev.author.name) result.reviewerNames!.push(sanitizeText(rev.author.name));
+          else result.reviewerNames!.push('Unknown');
+        }
+      }
+    }
+  }
 
-  const ratingMatch = html.match(/"ratingValue"\s*:\s*([\d.]+)/i);
-  if (ratingMatch) result.rating = parseFloat(ratingMatch[1]);
+  // Fallback to DOM parsing
+  if (!result.title) result.title = getMetaContent(html, 'og:title') || getMetaContent(html, 'product:name');
+  
+  // Specific fallbacks
+  if (site === 'amazon') {
+    if (!result.title) {
+       const m = html.match(/<span[^>]*id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i);
+       if (m) result.title = sanitizeText(m[1]);
+    }
+    if (!result.rating) {
+      const rm = html.match(/"ratingValue"\s*:\s*"([\d.]+)"/i) || html.match(/<span[^>]*class=["'][^"']*a-icon-alt[^"']*["'][^>]*>([\d.]+)\s*out of/i);
+      if (rm) result.rating = parseFloat(rm[1]);
+    }
+    if (!result.reviewCount) {
+      const rcm = html.match(/"reviewCount"\s*:\s*"([\d,]+)"/i) || html.match(/<span[^>]*id=["']acrCustomerReviewText["'][^>]*>([\d,]+)\s*ratings/i);
+      if (rcm) result.reviewCount = extractNumber(rcm[1]);
+    }
+    
+    if (!result.reviewSnippets || result.reviewSnippets.length === 0) {
+      const reviewRegex = /<span[^>]*data-hook=["']review-body["'][^>]*>([\s\S]*?)<\/span>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = reviewRegex.exec(html)) !== null && result.reviewSnippets!.length < 5) {
+        result.reviewSnippets!.push(sanitizeText(m[1]));
+      }
+    }
+  } else if (site === 'walmart' || site === 'bestbuy') {
+     if (!result.rating) {
+        const ratingMatch = html.match(/"ratingValue"\s*:\s*"?([\d.]+)"?/i);
+        if (ratingMatch) result.rating = parseFloat(ratingMatch[1]);
+     }
+     if (!result.reviewCount) {
+        const reviewCountMatch = html.match(/"reviewCount"\s*:\s*"?([\d,]+)"?/i);
+        if (reviewCountMatch) result.reviewCount = extractNumber(reviewCountMatch[1]);
+     }
+  }
 
-  const reviewCountMatch = html.match(/"reviewCount"\s*:\s*([\d,]+)/i);
-  if (reviewCountMatch) result.reviewCount = extractNumber(reviewCountMatch[1]);
-
-  return result;
-}
-
-function extractBestBuyData(html: string): Partial<ScrapedData> {
-  const result: Partial<ScrapedData> = {};
-
-  const title = getMetaContent(html, 'og:title');
-  if (title) result.title = title;
-
-  const ratingMatch = html.match(/"ratingValue"\s*:\s*([\d.]+)/i);
-  if (ratingMatch) result.rating = parseFloat(ratingMatch[1]);
-
-  const reviewCountMatch = html.match(/"reviewCount"\s*:\s*([\d,]+)/i);
-  if (reviewCountMatch) result.reviewCount = extractNumber(reviewCountMatch[1]);
+  // General fallback for rating
+  if (!result.rating) {
+     const ratingMatch = html.match(/"ratingValue"\s*:\s*"?([\d.]+)"?/i);
+     if (ratingMatch) result.rating = parseFloat(ratingMatch[1]);
+  }
+  if (!result.reviewCount) {
+     const reviewCountMatch = html.match(/"reviewCount"\s*:\s*"?([\d,]+)"?/i);
+     if (reviewCountMatch) result.reviewCount = extractNumber(reviewCountMatch[1]);
+  }
+  if (!result.ratingCount) {
+     const ratingCountMatch = html.match(/"ratingCount"\s*:\s*"?([\d,]+)"?/i);
+     if (ratingCountMatch) result.ratingCount = extractNumber(ratingCountMatch[1]);
+  }
 
   return result;
 }
@@ -139,6 +157,59 @@ function detectSite(url: string): string {
   }
 }
 
+interface FetchResult {
+  html: string;
+  status: number;
+  blocked: boolean;
+  degraded?: boolean;
+  failureReason?: string;
+}
+
+async function performFetch(url: string, userAgent: string): Promise<FetchResult> {
+  const controller = timeoutSignal(FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': userAgent,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      redirect: 'manual',
+    });
+
+    if (response.status === 429) {
+      return { html: '', status: 429, blocked: true, failureReason: 'Rate Limit (429)' };
+    }
+    if (response.status === 403 || response.status === 401) {
+      return { html: '', status: response.status, blocked: true, failureReason: 'WAF/Blocked (403)' };
+    }
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+       // Region redirect or other redirect
+       return { html: '', status: response.status, blocked: true, failureReason: 'Redirected' };
+    }
+    if (response.status >= 400) {
+      return { html: '', status: response.status, blocked: true, failureReason: 'HTTP Error ' + response.status };
+    }
+
+    const html = await response.text();
+    if (!html || html.length < 500) {
+      return { html, status: response.status, blocked: true, failureReason: 'Empty 200' };
+    }
+
+    if (html.includes('captcha') || html.includes('robot') || html.includes('chk_captcha') || html.includes('hCaptcha')) {
+      return { html, status: response.status, blocked: true, failureReason: 'Captcha Detected' };
+    }
+
+    return { html, status: 200, blocked: false };
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      return { html: '', status: 0, blocked: true, failureReason: 'Timeout' };
+    }
+    return { html: '', status: 0, blocked: true, failureReason: 'Fetch Error' };
+  }
+}
+
 export async function scrapeProduct(url: string): Promise<ScrapedData> {
   const baseData: ScrapedData = {
     title: null,
@@ -152,83 +223,36 @@ export async function scrapeProduct(url: string): Promise<ScrapedData> {
     blocked: false,
   };
 
-  try {
-    const controller = timeoutSignal(FETCH_TIMEOUT_MS);
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': USER_AGENT,
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-        },
-        redirect: 'manual',
-      });
-    } catch (fetchError) {
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        return { ...baseData, blocked: true };
-      }
-      return { ...baseData, blocked: true };
+  // Tier 1: Direct Desktop Fetch
+  let fetchResult = await performFetch(url, DESKTOP_USER_AGENT);
+  
+  if (fetchResult.blocked && (fetchResult.status === 403 || fetchResult.failureReason === 'Captcha Detected' || fetchResult.status === 429)) {
+    // Tier 2: Mobile UA Fallback
+    fetchResult = await performFetch(url, MOBILE_USER_AGENT);
+    if (!fetchResult.blocked) {
+      fetchResult.degraded = true;
+      fetchResult.failureReason = 'Mobile UA Fallback used';
     }
-
-    if (response.status >= 400) {
-      return { ...baseData, blocked: true };
-    }
-
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      return { ...baseData, blocked: true };
-    }
-
-    const html = await response.text();
-
-    if (!html || html.length < 500) {
-      return { ...baseData, blocked: true };
-    }
-
-    if (html.includes('captcha') || html.includes('robot') || html.includes('chk_captcha')) {
-      const partial = extractGenericData(html);
-      return { ...baseData, ...partial, blocked: true };
-    }
-
-    const site = detectSite(url);
-    let partial: Partial<ScrapedData>;
-
-    switch (site) {
-      case 'amazon':
-        partial = extractAmazonData(html);
-        break;
-      case 'walmart':
-        partial = extractWalmartData(html);
-        break;
-      case 'bestbuy':
-        partial = extractBestBuyData(html);
-        break;
-      default:
-        partial = extractGenericData(html);
-    }
-
-    return { ...baseData, ...partial };
-  } catch {
-    return { ...baseData, blocked: true };
   }
-}
 
-function extractGenericData(html: string): Partial<ScrapedData> {
-  const result: Partial<ScrapedData> = {};
+  if (fetchResult.blocked) {
+    // Return graceful degradation with blocked true
+    return { ...baseData, blocked: true, failureReason: fetchResult.failureReason, degraded: true };
+  }
 
-  const title = getMetaContent(html, 'og:title') || getMetaContent(html, 'product:name');
-  if (title) result.title = title;
+  const site = detectSite(url);
+  const parsedData = parseFromHtmlAndJsonLd(fetchResult.html, site);
 
-  const ratingMatch = html.match(/"ratingValue"\s*:\s*"?([\d.]+)"?/i);
-  if (ratingMatch) result.rating = parseFloat(ratingMatch[1]);
+  // If no title, consider empty listing (FS-50)
+  if (!parsedData.title) {
+    return { ...baseData, blocked: true, failureReason: 'Inactive or Empty Listing', degraded: true };
+  }
 
-  const reviewCountMatch = html.match(/"reviewCount"\s*:\s*"?([\d,]+)"?/i);
-  if (reviewCountMatch) result.reviewCount = extractNumber(reviewCountMatch[1]);
-
-  const ratingCountMatch = html.match(/"ratingCount"\s*:\s*"?([\d,]+)"?/i);
-  if (ratingCountMatch) result.ratingCount = extractNumber(ratingCountMatch[1]);
-
-  return result;
+  return {
+    ...baseData,
+    ...parsedData,
+    blocked: false,
+    degraded: fetchResult.degraded,
+    failureReason: fetchResult.failureReason
+  };
 }

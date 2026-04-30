@@ -1,4 +1,5 @@
 import { ScrapedData, AnalysisResult, SignalDetail } from './types';
+import { detectCategory, getCategoryWeights } from './category';
 
 const GENERIC_PATTERNS = [
   'great product', 'works great', 'love it', 'highly recommend', 'best purchase',
@@ -54,6 +55,19 @@ function analyzeRatingSkew(rating: number | null, reviewCount: number | null): S
 }
 
 function analyzeReviewVolume(reviewCount: number | null, ratingCount: number | null): SignalDetail {
+  const addSignal = (id: string, score: number, description: string, evSnippet?: string) => {
+    const def = findSignalDef(id);
+    if (!def) {
+      console.log(`[DEBUG] Signal definition not found for ID: ${id}`);
+      return;
+    }
+    console.log(`[DEBUG] Adding signal: ${def.name} (${id}) with score ${score}`);
+    signals.push({ id: def.id, name: def.name, score, description });
+    if (evSnippet) {
+      evidence.push({ signalId: def.id, snippet: evSnippet, source: 'Review Text' });
+    }
+  };
+
   const count = reviewCount || ratingCount || 0;
 
   if (count === 0) {
@@ -198,7 +212,6 @@ function analyzeTemporalSync(timestamps: string[]): SignalDetail {
     return { name: 'Temporal Synchronization', score: 0, description: 'Insufficient temporal data' };
   }
 
-  // Simplified sync detection: if multiple reviews have the same relative time or exact date
   const counts: Record<string, number> = {};
   for (const ts of timestamps) {
     counts[ts] = (counts[ts] || 0) + 1;
@@ -245,14 +258,13 @@ function analyzeVerifiedRatio(isVerified: boolean[]): SignalDetail {
 
 function analyzeAuthorPatterns(names: string[]): SignalDetail {
   if (!names || names.length < 5) {
-    return { name: 'Author Patterns', score: 0, description: 'Insufficient author data' };
+    return { name: 'Author Pattern', score: 0, description: 'Insufficient author data' };
   }
 
   let sequentialCount = 0;
   for (let i = 0; i < names.length - 1; i++) {
     const n1 = names[i].toLowerCase();
     const n2 = names[i+1].toLowerCase();
-    // Simple sequential detection: John A, John B or User 1, User 2
     if (n1.substring(0, 5) === n2.substring(0, 5) && n1 !== n2) {
       sequentialCount++;
     }
@@ -260,13 +272,13 @@ function analyzeAuthorPatterns(names: string[]): SignalDetail {
 
   if (sequentialCount >= 3) {
     return {
-      name: 'Author Patterns',
+      name: 'Author Pattern',
       score: 35,
       description: 'Sequential naming patterns detected among reviewers. Highly characteristic of bot farms.',
     };
   }
 
-  return { name: 'Author Patterns', score: 0, description: 'Reviewer identities appear organic.' };
+  return { name: 'Author Pattern', score: 0, description: 'Reviewer identities appear organic.' };
 }
 
 function analyzePromptLeaks(snippets: string[]): SignalDetail {
@@ -330,8 +342,12 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
       reasons: ['Unable to access full review data'],
       signals: [],
       limitations: ['Site blocked scraping', 'Consider checking reviews manually on the product page'],
+      nextSteps: ['Try another product listing', 'Check reviews manually on the product page'],
     };
   }
+
+  const category = detectCategory(data.title, url);
+  const weights = getCategoryWeights(category);
 
   const signals: SignalDetail[] = [
     analyzeRatingSkew(data.rating, data.reviewCount),
@@ -346,8 +362,24 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
     analyzeDataQuality(data),
   ];
 
-  const totalScore = signals.reduce((sum, s) => sum + s.score, 0);
-  const normalizedScore = Math.min(totalScore, 100);
+  const weightKeys: (keyof ReturnType<typeof getCategoryWeights>)[] = [
+    'ratingSkewWeight',
+    'volumeWeight',
+    'genericLanguageWeight',
+    'diversityWeight',
+    'keywordSpamWeight',
+    'temporalSyncWeight',
+    'verifiedRatioWeight',
+    'authorPatternWeight',
+    'promptLeakWeight',
+    'dataQualityWeight',
+  ];
+
+  let totalScore = 0;
+  for (let i = 0; i < signals.length; i++) {
+    totalScore += signals[i].score * weights[weightKeys[i]];
+  }
+  const normalizedScore = Math.min(Math.round(totalScore), 100);
 
   const reasons: string[] = [];
   for (const signal of signals) {
@@ -378,11 +410,23 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
 
   const confidence = Math.round(Math.max(0, Math.min(100, 100 - (normalizedScore * 0.5) - (limitations.length * 10))));
 
+  const nextSteps: string[] = [];
+  if (data.blocked) {
+    nextSteps.push('Try checking the product page directly');
+  }
+  if (confidence < 40) {
+    nextSteps.push('Consider looking for more reviews before making a decision');
+  }
+  if (nextSteps.length === 0) {
+    nextSteps.push('Share this result with someone who might find it useful');
+  }
+
   return {
     verdict,
     confidence,
     reasons: reasons.length > 0 ? reasons : ['No significant suspicious patterns detected'],
     signals,
     limitations: limitations.length > 0 ? limitations : ['None'],
+    nextSteps,
   };
 }

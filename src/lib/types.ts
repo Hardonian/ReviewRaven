@@ -10,18 +10,19 @@ export interface ScrapedData {
   blocked: boolean;
 }
 
+export interface SignalDetail {
+  name: string;
+  score: number;
+  description: string;
+}
+
 export interface AnalysisResult {
   verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN';
   confidence: number;
   reasons: string[];
   signals: SignalDetail[];
   limitations: string[];
-}
-
-export interface SignalDetail {
-  name: string;
-  score: number;
-  description: string;
+  nextSteps: string[];
 }
 
 export interface AnalyzeResponse {

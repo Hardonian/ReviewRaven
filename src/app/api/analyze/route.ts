@@ -3,6 +3,7 @@ import { scrapeProduct } from '@/lib/scraper';
 import { analyzeProduct } from '@/lib/analysis';
 import { AnalyzeResponse, ErrorResponse } from '@/lib/types';
 
+// Simple in-memory rate limiter
 const RATE_LIMIT = new Map<string, { count: number; resetAt: number }>();
 
 function getRateLimit(ip: string): boolean {
@@ -65,17 +66,38 @@ export async function POST(request: Request) {
     );
   }
 
-  const scrapedData = await scrapeProduct(validation.url!);
-  const analysis = analyzeProduct(scrapedData, validation.url!);
+  try {
+    const scrapedData = await scrapeProduct(validation.url!);
+    const analysis = analyzeProduct(scrapedData);
 
-  const response: AnalyzeResponse = {
-    ok: true,
-    data: {
-      url: validation.url!,
-      title: scrapedData.title,
-      result: analysis,
-    },
-  };
+    const response: AnalyzeResponse = {
+      ok: true,
+      verdict: analysis.verdict,
+      confidence: analysis.confidence,
+      confidenceExplanation: analysis.confidenceExplanation,
+      reasons: analysis.reasons,
+      signals: analysis.signals,
+      evidence: analysis.evidence,
+      limitations: analysis.limitations,
+      nextSteps: analysis.nextSteps,
+      degraded: analysis.degraded
+    };
 
-  return Response.json(response);
+    return Response.json(response);
+  } catch (error) {
+    console.error('Analysis error:', error);
+    // No hard 500s. Graceful degradation.
+    return Response.json({
+      ok: true,
+      verdict: 'UNKNOWN',
+      confidence: 0,
+      confidenceExplanation: 'Analysis failed due to an unexpected error.',
+      reasons: ['Internal system error during analysis.'],
+      signals: [],
+      evidence: [],
+      limitations: ['System encountered an error.'],
+      nextSteps: ['Try again later.'],
+      degraded: true
+    } as AnalyzeResponse);
+  }
 }

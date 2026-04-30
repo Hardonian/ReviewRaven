@@ -72,12 +72,12 @@ function SignalRow({ name, score, description }: { name: string; score: number; 
     <div className="py-3 border-b border-ghost-100 last:border-b-0">
       <div className="flex items-center justify-between mb-1">
         <span className="font-medium text-sm">{name}</span>
-        <span className="text-xs text-ghost-500">{score}/30</span>
+        <span className="text-xs text-ghost-500">{score}</span>
       </div>
       <div className="w-full h-1.5 bg-ghost-100 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full ${barColor} transition-all duration-300`}
-          style={{ width: `${(score / 30) * 100}%` }}
+          style={{ width: `${Math.min((score / 100) * 100, 100)}%` }}
         />
       </div>
       <p className="mt-1 text-xs text-ghost-500">{description}</p>
@@ -193,58 +193,84 @@ export default function Home() {
           )}
 
           {state === 'success' && result && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-fade-in-up">
               {result.title && (
-                <p className="text-sm text-ghost-500 truncate" title={result.title}>
+                <p className="text-sm text-ghost-500 font-medium px-2 truncate" title={result.title}>
                   {result.title}
                 </p>
               )}
 
-              <div className="p-6 rounded-2xl bg-white border border-ghost-200 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
+              <div className="p-8 rounded-3xl glass-card">
+                <div className="flex items-center justify-between mb-6">
                   <VerdictBadge verdict={result.result.verdict} />
                   <ConfidenceMeter confidence={result.result.confidence} />
                 </div>
 
-                <div className="space-y-2 mb-6">
+                <div className="mb-8 p-4 rounded-2xl bg-ghost-900/5 border border-ghost-900/10 backdrop-blur-md">
+                  <p className="text-xs text-ghost-600 italic font-medium leading-relaxed">
+                    &ldquo;{result.result.confidenceExplanation}&rdquo;
+                  </p>
+                </div>
+
+                <div className="space-y-3 mb-8">
                   {result.result.reasons.map((reason, i) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-ghost-400" viewBox="0 0 20 20" fill="currentColor">
-                        <circle cx="10" cy="10" r="4" />
-                      </svg>
-                      <p className="text-sm text-ghost-600">{reason}</p>
+                    <div key={i} className="flex items-start gap-3">
+                      <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-ghost-400 shrink-0" />
+                      <p className="text-sm text-ghost-700 font-medium">{reason}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-ghost-100 pt-4 mb-4">
-                  <h3 className="font-semibold text-sm mb-2">Signals</h3>
-                  {result.result.signals.map((signal, i) => (
-                    <SignalRow key={i} name={signal.name} score={signal.score} description={signal.description} />
-                  ))}
+                <div className="border-t border-ghost-900/5 pt-6 mb-6">
+                  <h3 className="font-bold text-xs uppercase tracking-widest text-ghost-400 mb-4">Risk Signals</h3>
+                  <div className="space-y-1">
+                    {result.result.signals.map((signal, i) => (
+                      <SignalRow key={i} name={signal.name} score={signal.score} description={signal.description} />
+                    ))}
+                  </div>
                 </div>
 
-                {result.result.limitations.length > 0 && result.result.limitations[0] !== 'None' && (
-                  <div className="border-t border-ghost-100 pt-4">
-                    <h3 className="font-semibold text-sm mb-2 text-ghost-500">Limitations</h3>
-                    {result.result.limitations.map((limitation, i) => (
-                      <p key={i} className="text-xs text-ghost-400 mb-1">{limitation}</p>
-                    ))}
+                {result.result.evidence && result.result.evidence.length > 0 && (
+                  <div className="border-t border-ghost-900/5 pt-6 mb-6">
+                    <h3 className="font-bold text-xs uppercase tracking-widest text-avoid mb-4">Evidence Snippets</h3>
+                    <div className="space-y-4">
+                      {result.result.evidence.map((ev, i) => (
+                        <div key={i} className="p-4 rounded-2xl bg-avoid/5 border-l-4 border-avoid shadow-sm transition-transform hover:scale-[1.01]">
+                          <p className="text-xs text-ghost-800 italic leading-relaxed">&ldquo;{ev.snippet}&rdquo;</p>
+                          <div className="mt-3 flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-tighter text-avoid/70">{ev.signalId}</span>
+                            <span className="text-[10px] font-bold text-ghost-400 uppercase">{ev.source}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                <div className="flex gap-2 mt-6">
+                <div className="grid grid-cols-2 gap-3 mt-8">
                   <button
                     onClick={handleShare}
-                    className="flex-1 px-4 py-2.5 rounded-lg border border-ghost-200 text-ghost-600 text-sm font-medium hover:bg-ghost-50 transition-colors"
+                    className="px-4 py-3 rounded-xl border border-ghost-200 text-ghost-700 text-sm font-bold hover:bg-white transition-all shadow-sm active:scale-95"
                   >
-                    Copy result
+                    Copy Report
+                  </button>
+                  <button
+                    onClick={() => {
+                      const text = encodeURIComponent(`ReviewGhost Verdict: ${result.result.verdict} (${result.result.confidence}% Confidence)\n\nTrust analysis for: ${result.title || 'this product'}\n\n#ReviewGhost #ConsumerSafety`);
+                      window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+                    }}
+                    className="px-4 py-3 rounded-xl bg-[#1DA1F2] text-white text-sm font-bold hover:opacity-90 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                      <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.84 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
+                    </svg>
+                    Post to X
                   </button>
                   <button
                     onClick={() => { setState('idle'); setResult(null); setUrl(''); }}
-                    className="flex-1 px-4 py-2.5 rounded-lg bg-ghost-900 text-white text-sm font-medium hover:bg-ghost-800 transition-colors"
+                    className="col-span-2 px-4 py-4 rounded-xl bg-ghost-900 text-white text-sm font-black uppercase tracking-widest hover:bg-ghost-800 transition-all shadow-lg active:scale-95"
                   >
-                    Check another
+                    Analyze New Product
                   </button>
                 </div>
               </div>
