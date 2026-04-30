@@ -75,8 +75,11 @@ function SignalRow({ name, score, description }: { name: string; score: number; 
       </div>
       <div className="w-full h-1.5 bg-raven-100 rounded-full overflow-hidden">
         <div 
-          className={`h-full transition-all duration-1000 ease-out ${barColor}`} 
-          style={{ width: `${Math.min(100, (absScore / 50) * 100)}%` }}
+          className="h-full transition-all duration-1000 ease-out bg-current" 
+          style={{ 
+            width: `${Math.min(100, (absScore / 50) * 100)}%`,
+            backgroundColor: score < 0 ? 'var(--color-buy)' : absScore < 20 ? 'var(--color-caution)' : 'var(--color-avoid)'
+          } as any}
         />
       </div>
       <p className="mt-1 text-xs text-raven-500">{description}</p>
@@ -249,19 +252,19 @@ export default function Home() {
                   </div>
                 )}
 
-                {(result.data.result.limitations?.length > 0 || result.data.result.nextSteps?.length > 0) && (
+                {((result.data.result.limitations?.length ?? 0) > 0 || (result.data.result.nextSteps?.length ?? 0) > 0) && (
                   <div className="border-t border-raven-900/5 pt-6 mb-6">
                     <div className="grid grid-cols-2 gap-6">
                       <div>
                         <h3 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-2">Limitations</h3>
                         <ul className="text-xs text-raven-500 list-disc list-inside pl-4">
-                          {result.data.result.limitations.map((l: string, i: number) => <li key={i}>{l}</li>)}
+                          {result.data.result.limitations?.map((l: string, i: number) => <li key={i}>{l}</li>)}
                         </ul>
                       </div>
                       <div>
                         <h3 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-2">Next Steps</h3>
                         <ul className="text-xs text-raven-500 list-disc list-inside pl-4">
-                          {result.data.result.nextSteps.map((step: string, i: number) => <li key={i}>{step}</li>)}
+                          {result.data.result.nextSteps?.map((step: string, i: number) => <li key={i}>{step}</li>)}
                         </ul>
                       </div>
                     </div>
