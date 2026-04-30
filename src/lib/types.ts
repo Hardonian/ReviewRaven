@@ -42,17 +42,11 @@ export interface AnalysisResult {
 
 export interface AnalyzeResponse {
   ok: true;
-  url: string;
-  title: string | null;
-  verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN';
-  confidence: number;
-  confidenceExplanation: string;
-  reasons: string[];
-  signals: SignalDetail[];
-  evidence: EvidenceDetail[];
-  limitations: string[];
-  nextSteps?: string[];
-  degraded?: boolean;
+  data: {
+    url: string;
+    title: string | null;
+    result: AnalysisResult;
+  };
 }
 
 export interface ErrorResponse {

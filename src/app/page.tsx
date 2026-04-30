@@ -75,8 +75,8 @@ function SignalRow({ name, score, description }: { name: string; score: number; 
       </div>
       <div className="w-full h-1.5 bg-raven-100 rounded-full overflow-hidden">
         <div 
-          className="h-full transition-all duration-1000 ease-out" 
-          style={{ width: `${Math.min(100, (absScore / 50) * 100)}%`, backgroundColor: barColor }}
+          className={`h-full transition-all duration-1000 ease-out ${barColor}`} 
+          style={{ width: `${Math.min(100, (absScore / 50) * 100)}%` }}
         />
       </div>
       <p className="mt-1 text-xs text-raven-500">{description}</p>
@@ -215,7 +215,7 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-3 mb-8">
-                  {result.data.result.reasons.map((reason, i) => (
+                  {result.data.result.reasons.map((reason: string, i: number) => (
                     <div key={i} className="flex items-start gap-3">
                       <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-raven-400 shrink-0" />
                       <p className="text-sm text-raven-700 font-medium">{reason}</p>
@@ -226,7 +226,7 @@ export default function Home() {
                 <div className="border-t border-raven-900/5 pt-6 mb-6">
                   <h3 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-4">Risk Signals</h3>
                   <div className="space-y-1">
-                    {result.data.result.signals && result.data.result.signals.map((signal, i) => (
+                    {result.data.result.signals && result.data.result.signals.map((signal: any, i: number) => (
                       <SignalRow key={i} name={signal.name} score={signal.score} description={signal.description} />
                     ))}
                   </div>
@@ -236,7 +236,7 @@ export default function Home() {
                   <div className="border-t border-raven-900/5 pt-6 mb-6">
                     <h3 className="font-bold text-xs uppercase tracking-widest text-avoid mb-4">Evidence Snippets</h3>
                     <div className="space-y-4">
-                      {result.data.result.evidence.map((ev, i) => (
+                      {result.data.result.evidence.map((ev: any, i: number) => (
                         <div key={i} className="p-4 rounded-2xl bg-avoid/5 border-l-4 border-avoid shadow-sm transition-transform hover:scale-[1.01]">
                           <p className="text-xs text-raven-800 italic leading-relaxed">&ldquo;{ev.snippet}&rdquo;</p>
                           <div className="mt-1.5 flex items-center justify-between">
