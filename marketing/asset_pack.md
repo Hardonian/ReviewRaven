@@ -256,6 +256,7 @@
 ### D. Landing Copy Variants
 
 #### 10 Headlines:
+
 1. Ghost the fake reviews before you buy.
 2. Stop trusting the stars. Start trusting the data.
 3. Is your cart full of low-trust signals?
@@ -268,6 +269,7 @@
 10. Don't buy a lie.
 
 #### 10 Subheadlines:
+
 1. We analyze review patterns to find the truth so you don't have to.
 2. Deterministic signal analysis for the modern consumer.
 3. Stop wasting money on products with manipulated feedback.
@@ -280,6 +282,7 @@
 10. Your shield against the feedback farms.
 
 #### 10 CTAs:
+
 1. Ghost It Now
 2. Scan Your URL
 3. Get the Verdict
@@ -292,6 +295,7 @@
 10. Protect My Cart
 
 #### 5 Trust Sections:
+
 1. **No PII Policy**: We never store your data or tracking your history.
 2. **Deterministic Engine**: No generative AI hallucinations. Just hard data.
 3. **Consumer First**: We work for you, not the platforms.
@@ -303,6 +307,7 @@
 ## 3. PRODUCT EXPLANATION PACK
 
 ### A. Simple Explanations (20)
+
 1. It’s like an X-ray for reviews.
 2. It checks if everyone is saying the same thing at the same time.
 3. It looks for "bursts" of activity that don't look natural.
@@ -327,6 +332,7 @@
 ---
 
 ### B. Skeptical Explanations (10)
+
 1. We don't "guess". We measure statistical deviation.
 2. Our code is open for review in the MODEL_SPEC.
 3. We don't take money from brands to change results.
@@ -341,6 +347,7 @@
 ---
 
 ### C. Limitations Explanations (10)
+
 1. "UNKNOWN" means we’re being honest about a lack of data.
 2. If a platform blocks us, we won't give you a fake result.
 3. We can only analyze what's public.
@@ -357,6 +364,7 @@
 ## 4. SHARE + VIRAL SYSTEM
 
 ### A. Share Captions (30)
+
 1. Just ghosted this $50 mistake. #ReviewGhost
 2. Finally, a tool that doesn't lie to me.
 3. Avoided a "5-star" trap today. Thanks @ReviewGhost.
@@ -391,6 +399,7 @@
 ---
 
 ### B. Screenshot Overlay Text (20)
+
 1. VERDICT: AVOID
 2. 15% CONFIDENCE
 3. SUSPICIOUS PATTERNS
@@ -415,6 +424,7 @@
 ---
 
 ### C. Result-Sharing Hooks (20)
+
 1. I found the worst product on Amazon.
 2. Is this $200 headphones a scam?
 3. ReviewGhost found a bot farm in 2 seconds.

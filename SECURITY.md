@@ -9,21 +9,25 @@
 ## Security Features
 
 ### SSRF Protection
+
 - Only HTTPS URLs are accepted
 - Internal IP ranges are blocked (10.x, 172.16-31.x, 192.168.x, 127.x)
 - Localhost access is blocked
 - Only allowed e-commerce hosts are processed
 
 ### Rate Limiting
+
 - In-memory rate limiting at 5 requests per minute per IP
 - Prevents abuse of the scraping engine
 
 ### Input Validation
+
 - URL format validation before any processing
 - HTML sanitization of scraped content
 - No script execution — only static HTML parsing
 
 ### Data Handling
+
 - No PII collected or stored
 - No cookies or tracking beyond rate limiting
 - All analytics are anonymous event counts

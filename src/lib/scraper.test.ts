@@ -12,7 +12,7 @@ describe('scraper', () => {
   });
 
   it('returns blocked state when fetch fails', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network error'));
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -22,10 +22,10 @@ describe('scraper', () => {
   });
 
   it('returns blocked state on redirect', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 301,
       text: () => Promise.resolve(''),
-    });
+    } as Response);
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -33,10 +33,10 @@ describe('scraper', () => {
   });
 
   it('returns blocked state on 403/404', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 403,
       text: () => Promise.resolve(''),
-    });
+    } as Response);
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -44,10 +44,10 @@ describe('scraper', () => {
   });
 
   it('returns blocked state when response is too small', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 200,
       text: () => Promise.resolve('<html></html>'),
-    });
+    } as Response);
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -62,10 +62,10 @@ describe('scraper', () => {
       <body></body>
     </html>`;
 
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 200,
       text: () => Promise.resolve('<html>' + html + ' '.repeat(600) + '</html>'),
-    });
+    } as Response);
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -83,10 +83,10 @@ describe('scraper', () => {
       </body>
     </html>`;
 
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 200,
       text: () => Promise.resolve('<html>' + html + ' '.repeat(600) + '</html>'),
-    });
+    } as Response);
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -98,10 +98,10 @@ describe('scraper', () => {
   it('detects captcha and returns blocked', async () => {
     const html = `<html><body><div id="captcha">Please verify you are human</div></body></html>`;
 
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       status: 200,
       text: () => Promise.resolve('<html>' + html + ' '.repeat(600) + '</html>'),
-    });
+    } as Response);
 
     const result = await scrapeProduct('https://www.amazon.com/dp/B08N5WRWNW');
 
@@ -109,7 +109,7 @@ describe('scraper', () => {
   });
 
   it('handles timeout gracefully', async () => {
-    global.fetch = vi.fn().mockImplementation(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
       () => new Promise((_, reject) => setTimeout(() => reject(new DOMException('', 'AbortError')), 50))
     );
 
