@@ -7,6 +7,10 @@
     --foreground-rgb: 15, 23, 42;
     --background-rgb: 255, 255, 255;
     --accent-gradient: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+    --color-buy: #22c55e;
+    --color-caution: #f59e0b;
+    --color-avoid: #ef4444;
+    --color-unknown: #6b7280;
   }
 
   body {
