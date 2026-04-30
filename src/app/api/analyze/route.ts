@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     return errorResponse('UNSUPPORTED_STORE', 'Only Amazon, Walmart, and Best Buy are currently supported.', false, 400);
   }
   const scrapedData = await scrapeProduct(validation.url!);
-  const analysis = analyzeProduct(scrapedData, validation.url!);
+  const analysis = analyzeProduct(scrapedData);
   const response: AnalyzeResponse = {
     ok: true,
     data: { url: validation.url!, title: scrapedData.title, result: analysis },
