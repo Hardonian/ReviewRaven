@@ -255,7 +255,7 @@
 
 ### D. Landing Copy Variants
 
-#### 10 Headlines:
+#### 10 Headlines
 
 1. Ghost the fake reviews before you buy.
 2. Stop trusting the stars. Start trusting the data.
@@ -268,7 +268,7 @@
 9. One URL. One Verdict. Total Clarity.
 10. Don't buy a lie.
 
-#### 10 Subheadlines:
+#### 10 Subheadlines
 
 1. We analyze review patterns to find the truth so you don't have to.
 2. Deterministic signal analysis for the modern consumer.
@@ -281,7 +281,7 @@
 9. Skepticism as a service.
 10. Your shield against the feedback farms.
 
-#### 10 CTAs:
+#### 10 CTAs
 
 1. Ghost It Now
 2. Scan Your URL
@@ -294,7 +294,7 @@
 9. Start Ghosting
 10. Protect My Cart
 
-#### 5 Trust Sections:
+#### 5 Trust Sections
 
 1. **No PII Policy**: We never store your data or tracking your history.
 2. **Deterministic Engine**: No generative AI hallucinations. Just hard data.

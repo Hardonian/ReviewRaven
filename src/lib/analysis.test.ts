@@ -61,12 +61,14 @@ describe('analyzeProduct', () => {
 
   it('returns CAUTION verdict for moderate suspicion scores', () => {
     const data = createScrapedData({
-      rating: 4.8,
-      reviewCount: 5,
+      rating: 4.6,
+      reviewCount: 30,
       reviewSnippets: [
-        'Great product! Love it! Highly recommend!',
-        'Amazing quality. Best purchase ever!',
-        'Perfect gift. Five stars! Would buy again!',
+        'Great product! Works well for my needs.',
+        'Amazing quality but shipping was slow.',
+        'Perfect for what I needed. Would buy again.',
+        'Good item but not quite what I expected.',
+        'Decent value. Had minor issues with setup.',
       ],
     });
 
