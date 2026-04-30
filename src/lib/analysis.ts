@@ -1,9 +1,42 @@
-import { ScrapedData, AnalysisResult, SignalDetail, EvidenceDetail } from './types';
-import { reviewSignals } from './intel/signalRegistry';
+// Analysis engine using shared intelligence components
+// Replaces ad-hoc signal detection, scoring, and confidence calculation
+
+import { ScrapedData } from '@reviewraven/shared-intelligence';
+import { SignalDetail, EvidenceDetail, Verdict, createSafeLogEntry, safeLog, hashNormalizedUrl, generateIdempotencyKey } from '@reviewraven/shared-core';
+import {
+  createReviewRavenRegistry,
+  reviewSpecificSignals,
+} from './review-signals';
+import { createSignalRegistry, sharedSignals } from '@reviewraven/shared-intelligence';
+import { calculateConfidence } from '@reviewraven/shared-intelligence';
+import { calculateScore, determineVerdict, CategoryAdjustment } from '@reviewraven/shared-intelligence';
+import { buildEvidence } from '@reviewraven/shared-intelligence';
 import { categoryRules } from './intel/categoryRegistry';
+import { detectCategory } from './category';
+import { recordEvent, createSession, completeSession } from '@reviewraven/shared-diagnostics';
+import { recordCost, incrementUnknown, incrementAnalysis } from '@reviewraven/shared-cost-control';
+import { memoryCache, DEFAULT_CACHE_TTL_MS, getInFlight, setInFlight } from '@reviewraven/shared-infra';
+import { extractDomain } from '@reviewraven/shared-core';
+
+const LEGAL_TERMS = ['scam', 'fraud', 'guaranteed fake', 'illegal'];
+const SAFE_REPLACEMENTS: Record<string, string> = {
+  'scam': 'suspicious pattern',
+  'fraud': 'inconsistent review behavior',
+  'guaranteed fake': 'low trust signal',
+  'illegal': 'unable to verify',
+};
+
+function sanitizeLanguage(text: string): string {
+  let result = text;
+  for (const [term, replacement] of Object.entries(SAFE_REPLACEMENTS)) {
+    result = result.replace(new RegExp(term, 'gi'), replacement);
+  }
+  return result;
+}
 
 function findSignalDef(id: string) {
-  return reviewSignals.find(s => s.id === id);
+  const registry = createReviewRavenRegistry();
+  return registry.get(id);
 }
 
 function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: EvidenceDetail[] } {
@@ -13,13 +46,13 @@ function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: 
   const addSignal = (id: string, explanation: string, evSnippet?: string, evSource?: string) => {
     const def = findSignalDef(id);
     if (!def) return;
-    signals.push({ name: def.name, weight: def.weight, explanation });
+    const cleanExplanation = sanitizeLanguage(explanation);
+    signals.push({ id: def.id, name: def.name, type: def.type, weight: def.weight, explanation: cleanExplanation });
     if (evSnippet) {
-      evidence.push({ signal: def.name, snippet: evSnippet, source: evSource || 'Review Text' });
+      evidence.push(buildEvidence(def.id, def.name, evSnippet, evSource || 'Review Text'));
     }
   };
 
-  // Temporal Sync / Burst Arrival
   if (data.timestamps && data.timestamps.length >= 3) {
     const counts: Record<string, number> = {};
     for (const ts of data.timestamps) {
@@ -31,7 +64,6 @@ function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: 
     }
   }
 
-  // Verified Purchase Deficit
   if (data.isVerified && data.isVerified.length >= 5) {
     const verifiedCount = data.isVerified.filter(v => v).length;
     const ratio = verifiedCount / data.isVerified.length;
@@ -42,44 +74,39 @@ function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: 
     }
   }
 
-  // Superlative Clumping / Keyword Spam / AI generation
   if (data.reviewSnippets && data.reviewSnippets.length > 0) {
     let superlativeCount = 0;
     const superlatives = ['best', 'perfect', 'amazing', 'incredible', 'flawless'];
-    
+
     for (const snippet of data.reviewSnippets) {
       const lower = snippet.toLowerCase();
       const hasSup = superlatives.some(s => lower.includes(s));
       if (hasSup) superlativeCount++;
-      
-      // Emotional Extremity
+
       if ((snippet.match(/!/g) || []).length >= 4 || (snippet.length > 10 && snippet === snippet.toUpperCase())) {
-         addSignal('SIG-S024', 'Excessive exclamation marks or ALL CAPS detected.', snippet);
+        addSignal('SIG-S024', 'Excessive exclamation marks or ALL CAPS detected.', snippet);
       }
-      
-      // AI Prompt Leak
+
       if (lower.includes('as an ai') || lower.includes('write a 5-star') || lower.includes('language model')) {
-         addSignal('SIG-S100', 'AI prompt leak detected in review text.', snippet);
+        addSignal('SIG-S100', 'AI prompt leak detected in review text.', snippet);
       }
     }
-    
+
     if (superlativeCount / data.reviewSnippets.length > 0.5) {
       addSignal('SIG-S003', 'Unusually high density of superlative keywords across reviews.');
     }
-    
-    // Opening Identity
+
     if (data.reviewSnippets.length >= 3) {
       const openings = data.reviewSnippets.map(s => s.substring(0, 15).toLowerCase());
       const uniqueOpenings = new Set(openings);
       if (uniqueOpenings.size / openings.length < 0.5) {
-         addSignal('SIG-S006', 'Multiple reviews start with the exact same phrasing.', data.reviewSnippets[0].substring(0, 30) + '...');
+        addSignal('SIG-S006', 'Multiple reviews start with the exact same phrasing.', data.reviewSnippets[0].substring(0, 30) + '...');
       } else {
-         addSignal('SIG-G005', 'Reviews show natural, unique phrasing.');
+        addSignal('SIG-G005', 'Reviews show natural, unique phrasing.');
       }
     }
   }
 
-  // Author patterns
   if (data.reviewerNames && data.reviewerNames.length >= 5) {
     let sequentialCount = 0;
     for (let i = 0; i < data.reviewerNames.length - 1; i++) {
@@ -89,19 +116,11 @@ function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: 
         sequentialCount++;
       }
     }
-    // We add this manually since Author Pattern might not exist with exactly this name in our registry,
-    // let's check registry. Wait, registry doesn't have Author Pattern? Let's use SIG-S006 or similar if not found.
-    // Or just add it if found.
-    const authorDef = reviewSignals.find(s => s.name === 'Author Pattern' || s.name === 'Reviewer_Inactivity');
-    if (sequentialCount >= 3 && authorDef) {
-       addSignal(authorDef.id, 'Sequential naming patterns detected among reviewers.');
-    } else if (sequentialCount >= 3) {
-       // fallback if we can't find it
-       signals.push({ name: 'Author Pattern', weight: -35, explanation: 'Sequential naming patterns detected among reviewers.' });
+    if (sequentialCount >= 3) {
+      addSignal('SIG-S008', 'Sequential naming patterns detected among reviewers.');
     }
   }
 
-  // Missing Data Penalty check
   if (!data.rating || !data.reviewCount) {
     addSignal('SIG-S005', 'Missing rating or review count suggests suppressed or new listing.');
   }
@@ -109,11 +128,26 @@ function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: 
   return { signals, evidence };
 }
 
-export function analyzeProduct(data: ScrapedData): AnalysisResult {
+export function analyzeProduct(data: ScrapedData): {
+  schemaVersion: string;
+  resultId: string;
+  verdict: Verdict;
+  confidence: number;
+  confidenceExplanation: string;
+  reasons: string[];
+  signals: SignalDetail[];
+  evidence: EvidenceDetail[];
+  limitations: string[];
+  nextSteps?: string[];
+  degraded: boolean;
+  diagnosticsId: string;
+} {
+  const resultId = crypto.randomUUID ? crypto.randomUUID() : generateIdempotencyKey(Date.now().toString()).key;
   const { signals, evidence } = detectSignals(data);
-  let limitations: string[] = [];
+
+  const limitations: string[] = [];
   const nextSteps: string[] = [];
-  
+
   if (data.blocked || data.degraded) {
     limitations.push(`Data collection was degraded: ${data.failureReason || 'Anti-bot protection'}`);
     nextSteps.push('Try analyzing a different product URL.');
@@ -126,101 +160,72 @@ export function analyzeProduct(data: ScrapedData): AnalysisResult {
     limitations.push('No review text was available to analyze.');
   }
 
-  let totalRiskScore = 0;
-  let signalStrength = 0;
-  
-  // Adjust weights based on category rules
-  const category = data.category || 'unknown';
+  const category = data.category || detectCategory(data.title, '');
   const rules = categoryRules.find(c => c.category === category)?.adjustments || [];
+  const categoryAdjustments: CategoryAdjustment[] = rules.map(r => ({ signalId: r.signalId, weightModifier: r.weightModifier }));
 
-  for (const sig of signals) {
-    let weight = sig.weight;
-    
-    // Need to find signal ID by name to apply rule
-    const def = reviewSignals.find(s => s.name === sig.name);
-    if (def) {
-      const rule = rules.find(r => r.signalId === def.id);
-      if (rule) {
-        weight *= rule.weightModifier;
-      }
-    }
-    
-    sig.weight = weight; // apply the adjusted weight
-    sig.score = weight;  // backwards compatibility
-    
-    // SUSPICIOUS are negative in registry. Make them positive risk.
-    if (weight < 0) {
-      totalRiskScore += Math.abs(weight);
-    } else {
-      totalRiskScore -= weight; // SAFE reduces risk
-    }
-    signalStrength += Math.abs(weight);
-  }
+  const scoring = calculateScore(signals, categoryAdjustments);
+  const hasUltimateSuspicion = scoring.adjustedSignals.some(s => s.name === 'Ultimate_Suspicion');
+  const verdict = determineVerdict(scoring.totalRiskScore, data.blocked, !!data.degraded, data.reviewSnippets.length, hasUltimateSuspicion);
 
-  totalRiskScore = Math.max(0, Math.min(100, totalRiskScore));
+  const confidenceResult = calculateConfidence(
+    scoring.adjustedSignals,
+    scoring.signalStrength,
+    data.blocked,
+    !!data.degraded,
+    data.reviewCount,
+    data.reviewSnippets.length,
+    !!data.title
+  );
 
-  let verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN' = 'UNKNOWN';
-  if ((data.blocked || data.degraded) && data.reviewSnippets.length === 0) {
-    verdict = 'UNKNOWN';
-  } else if (signals.some(s => s.name === 'Ultimate_Suspicion')) {
-    verdict = 'AVOID';
-  } else if (totalRiskScore <= 30) {
-    verdict = 'BUY';
-  } else if (totalRiskScore <= 60) {
-    verdict = 'CAUTION';
-  } else {
-    verdict = 'AVOID';
-  }
-
-  // Confidence Calculation
-  let confidence = Math.min(100, signalStrength === 0 ? 0 : signalStrength + 20); // base confidence
-  
-  // Penalties
-  let confidenceExplanation = [];
-  if (data.blocked || data.degraded) {
-    confidence -= 40;
-    confidenceExplanation.push('Heavy penalty applied due to degraded scraping.');
-  }
-  if (!data.reviewCount || data.reviewCount < 10) {
-    confidence -= 20;
-    confidenceExplanation.push('Penalty applied due to low review volume.');
-  }
-  
-  // Caps
-  if ((data.blocked && data.reviewSnippets.length === 0) || !data.title) {
-    confidence = Math.min(confidence, 30);
-    confidenceExplanation.push('Confidence capped at 30% due to missing data.');
-  } else if (data.reviewSnippets.length < 3) {
-    confidence = Math.min(confidence, 60);
-    confidenceExplanation.push('Confidence capped at 60% due to partial review data.');
-  } else if (signals.length < 2) {
-    confidence = Math.min(confidence, 75);
-    confidenceExplanation.push('Confidence capped at 75% due to weak evidence.');
-  } else if (signals.length >= 3 && signalStrength > 80) {
-    confidence = Math.min(Math.max(confidence, 80), 95);
-    confidenceExplanation.push('Strong multi-signal evidence found.');
-  }
-
-  confidence = Math.max(0, Math.round(confidence));
-
-  const reasons = signals
+  const reasons = scoring.adjustedSignals
     .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
     .slice(0, 3)
-    .map(s => s.explanation);
+    .map(s => sanitizeLanguage(s.explanation));
 
   if (reasons.length === 0) {
     reasons.push('Insufficient data to form specific conclusions.');
   }
 
+  const diagnosticsId = resultId;
+
   return {
+    schemaVersion: '1.0.0',
+    resultId,
     verdict,
-    confidence,
-    confidenceExplanation: confidenceExplanation.join(' ') || 'Analysis complete.',
+    confidence: confidenceResult.confidence,
+    confidenceExplanation: confidenceResult.explanation.join(' ') || 'Analysis complete.',
     reasons,
-    signals,
+    signals: scoring.adjustedSignals,
     evidence,
     limitations,
     nextSteps: nextSteps.length > 0 ? nextSteps : undefined,
-    degraded: data.degraded
+    degraded: !!data.degraded,
+    diagnosticsId,
   };
+}
+
+export async function analyzeWithCache(url: string, data: ScrapedData) {
+  const domain = extractDomain(url);
+  const cacheKey = `analysis:${hashNormalizedUrl(url)}`;
+
+  const cached = memoryCache.get(cacheKey) as ReturnType<typeof analyzeProduct> | null;
+  if (cached) {
+    recordCost({ domain, type: 'cache_miss', costMs: 0 });
+    return cached;
+  }
+
+  const inFlight = getInFlight(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const promise = (async () => {
+    const result = analyzeProduct(data);
+    memoryCache.set(cacheKey, result, DEFAULT_CACHE_TTL_MS);
+    return result;
+  })();
+
+  setInFlight(cacheKey, promise);
+  return promise;
 }

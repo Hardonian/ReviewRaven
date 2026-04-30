@@ -1,14 +1,22 @@
-import { ErrorResponse } from '@/lib/types';
+import { recordEvent } from '@reviewraven/shared-diagnostics';
+import type { DiagnosticEventType } from '@reviewraven/shared-diagnostics';
 
-const ANALYTICS_EVENTS = new Map<string, number>();
-
-function incrementEvent(event: string) {
-  const current = ANALYTICS_EVENTS.get(event) || 0;
-  ANALYTICS_EVENTS.set(event, current + 1);
-}
+const VALID_EVENTS: DiagnosticEventType[] = [
+  'analyze_started',
+  'analyze_completed',
+  'analyze_failed',
+  'unknown_result',
+  'degraded_result',
+  'high_risk_result',
+  'cache_hit',
+  'cache_miss',
+  'domain_blocked',
+  'unsupported_domain',
+  'share_clicked',
+];
 
 export async function POST(request: Request) {
-  let body: { event?: string };
+  let body: { event?: string; url?: string };
   try {
     body = await request.json();
   } catch {
@@ -25,24 +33,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const validEvents = ['analyze_started', 'analyze_completed', 'result_viewed', 'share_clicked'];
-  if (!validEvents.includes(body.event)) {
+  if (!VALID_EVENTS.includes(body.event as DiagnosticEventType)) {
     return Response.json(
-      { ok: false, code: 'INVALID_EVENT', message: `Event must be one of: ${validEvents.join(', ')}.`, retryable: false },
+      { ok: false, code: 'INVALID_EVENT', message: `Event must be one of: ${VALID_EVENTS.join(', ')}.`, retryable: false },
       { status: 400 }
     );
   }
 
-  incrementEvent(body.event);
+  const url = body.url || 'https://example.com/unknown';
+  recordEvent(body.event as DiagnosticEventType, url);
 
   return Response.json({ ok: true, event: body.event });
 }
 
 export async function GET() {
-  const events: Record<string, number> = {};
-  Array.from(ANALYTICS_EVENTS.entries()).forEach(([event, count]) => {
-    events[event] = count;
-  });
-
-  return Response.json({ ok: true, events });
+  return Response.json({ ok: true, validEvents: VALID_EVENTS });
 }

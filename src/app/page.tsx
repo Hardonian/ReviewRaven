@@ -1,7 +1,25 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { AnalyzeResponse, ErrorResponse } from '@/lib/types';
+import { ErrorEnvelope } from '@reviewraven/shared-core';
+
+interface RavenAnalyzeResponse {
+  schemaVersion: string;
+  ok: true;
+  resultId: string;
+  verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN';
+  confidence: number;
+  confidenceExplanation: string;
+  reasons: string[];
+  signals: Array<{ id: string; name: string; type: string; weight: number; explanation: string }>;
+  evidence: Array<{ signalId: string; signal: string; snippet: string; source: string }>;
+  limitations: string[];
+  nextSteps?: string[];
+  degraded: boolean;
+  diagnosticsId: string;
+  title?: string | null;
+  url?: string;
+}
 
 function RavenIcon() {
   return (
@@ -66,7 +84,7 @@ function ConfidenceMeter({ confidence }: { confidence: number }) {
 function SignalRow({ name, score, description }: { name: string; score: number; description: string }) {
   const absScore = Math.abs(score);
   const barRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     if (barRef.current) {
       const width = Math.min(100, (absScore / 50) * 100);
@@ -83,9 +101,9 @@ function SignalRow({ name, score, description }: { name: string; score: number; 
         <span className="text-xs text-raven-500">{absScore}</span>
       </div>
       <div className="w-full h-1.5 bg-raven-100 rounded-full overflow-hidden">
-        <div 
+        <div
           ref={barRef}
-          className="h-full transition-all duration-1000 ease-out" 
+          className="h-full transition-all duration-1000 ease-out"
         />
       </div>
       <p className="mt-1 text-xs text-raven-500">{description}</p>
@@ -98,8 +116,8 @@ type AnalysisState = 'idle' | 'loading' | 'success' | 'error';
 export default function Home() {
   const [url, setUrl] = useState('');
   const [state, setState] = useState<AnalysisState>('idle');
-  const [result, setResult] = useState<AnalyzeResponse | null>(null);
-  const [error, setError] = useState<ErrorResponse | null>(null);
+  const [result, setResult] = useState<RavenAnalyzeResponse | null>(null);
+  const [error, setError] = useState<ErrorEnvelope | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,24 +137,23 @@ export default function Home() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data as ErrorResponse);
+        setError(data as ErrorEnvelope);
         setState('error');
         return;
       }
 
-      setResult(data as AnalyzeResponse);
+      setResult({ ...data, title: data.title, url: data.url } as RavenAnalyzeResponse);
       setState('success');
     } catch {
-      setError({ ok: false, code: 'NETWORK_ERROR', message: 'Network error. Please try again.', retryable: true });
+      setError({ schemaVersion: '1.0.0', ok: false, code: 'NETWORK_ERROR', message: 'Network error. Please try again.', retryable: true });
       setState('error');
     }
   };
 
   const handleShare = async () => {
     if (!result) return;
-    const title = result.data.title || 'this product';
-    const analysis = result.data.result;
-    const text = `ReviewRaven verdict for "${title}": ${analysis.verdict} (${analysis.confidence}% confidence)`;
+    const title = result.title || 'this product';
+    const text = `ReviewRaven verdict for "${title}": ${result.verdict} (${result.confidence}% confidence)`;
 
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(text);
@@ -205,26 +222,26 @@ export default function Home() {
 
           {state === 'success' && result && (
             <div className="space-y-4 animate-fade-in-up">
-              {result.data.title && (
-                <p className="text-sm text-raven-500 font-medium px-2 truncate" title={result.data.title}>
-                  {result.data.title}
+              {result.title && (
+                <p className="text-sm text-raven-500 font-medium px-2 truncate" title={result.title}>
+                  {result.title}
                 </p>
               )}
 
               <div className="p-8 rounded-3xl glass-card">
                 <div className="flex items-center justify-between mb-6">
-                  <VerdictBadge verdict={result.data.result.verdict} />
-                  <ConfidenceMeter confidence={result.data.result.confidence} />
+                  <VerdictBadge verdict={result.verdict} />
+                  <ConfidenceMeter confidence={result.confidence} />
                 </div>
 
                 <div className="mb-8 p-4 rounded-2xl bg-raven-900/5 border border-raven-900/10 backdrop-blur-md">
                   <p className="text-xs text-raven-600 italic font-medium leading-relaxed">
-                    &ldquo;{result.data.result.confidenceExplanation}&rdquo;
+                    &ldquo;{result.confidenceExplanation}&rdquo;
                   </p>
                 </div>
 
                 <div className="space-y-3 mb-8">
-                  {result.data.result.reasons.map((reason: string, i: number) => (
+                  {result.reasons.map((reason: string, i: number) => (
                     <div key={i} className="flex items-start gap-3">
                       <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-raven-400 shrink-0" />
                       <p className="text-sm text-raven-700 font-medium">{reason}</p>
@@ -235,17 +252,17 @@ export default function Home() {
                 <div className="border-t border-raven-900/5 pt-6 mb-6">
                   <h2 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-4">Risk Signals</h2>
                   <div className="space-y-1">
-                    {result.data.result.signals && result.data.result.signals.map((signal: any, i: number) => (
-                      <SignalRow key={i} name={signal.name} score={signal.score} description={signal.description} />
+                    {result.signals && result.signals.map((signal, i: number) => (
+                      <SignalRow key={i} name={signal.name} score={signal.weight} description={signal.explanation} />
                     ))}
                   </div>
                 </div>
 
-                {result.data.result.evidence && result.data.result.evidence.length > 0 && (
+                {result.evidence && result.evidence.length > 0 && (
                   <div className="border-t border-raven-900/5 pt-6 mb-6">
                     <h2 className="font-bold text-xs uppercase tracking-widest text-avoid mb-4">Evidence Snippets</h2>
                     <div className="space-y-4">
-                      {result.data.result.evidence.map((ev: any, i: number) => (
+                      {result.evidence.map((ev, i: number) => (
                         <div key={i} className="p-4 rounded-2xl bg-avoid/5 border-l-4 border-avoid shadow-sm transition-transform hover:scale-[1.01]">
                           <p className="text-xs text-raven-800 italic leading-relaxed">&ldquo;{ev.snippet}&rdquo;</p>
                           <div className="mt-1.5 flex items-center justify-between">
@@ -258,19 +275,19 @@ export default function Home() {
                   </div>
                 )}
 
-                {((result.data.result.limitations?.length ?? 0) > 0 || (result.data.result.nextSteps?.length ?? 0) > 0) && (
+                {((result.limitations?.length ?? 0) > 0 || (result.nextSteps?.length ?? 0) > 0) && (
                   <div className="border-t border-raven-900/5 pt-6 mb-6">
                     <div className="grid grid-cols-2 gap-6">
                       <div>
                         <h2 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-2">Limitations</h2>
                         <ul className="text-xs text-raven-500 list-disc list-inside pl-4">
-                          {result.data.result.limitations?.map((l: string, i: number) => <li key={i}>{l}</li>)}
+                          {result.limitations?.map((l: string, i: number) => <li key={i}>{l}</li>)}
                         </ul>
                       </div>
                       <div>
                         <h2 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-2">Next Steps</h2>
                         <ul className="text-xs text-raven-500 list-disc list-inside pl-4">
-                          {result.data.result.nextSteps?.map((step: string, i: number) => <li key={i}>{step}</li>)}
+                          {result.nextSteps?.map((step: string, i: number) => <li key={i}>{step}</li>)}
                         </ul>
                       </div>
                     </div>
@@ -286,7 +303,7 @@ export default function Home() {
                   </button>
                   <button
                     onClick={() => {
-                      const text = encodeURIComponent(`ReviewRaven Verdict: ${result.data.result.verdict} (${result.data.result.confidence}% Confidence)\n\nTrust analysis for: ${result.data.title || 'this product'}\n\n#ReviewRaven #ConsumerSafety`);
+                      const text = encodeURIComponent(`ReviewRaven Verdict: ${result.verdict} (${result.confidence}% Confidence)\n\nTrust analysis for: ${result.title || 'this product'}\n\n#ReviewRaven #ConsumerSafety`);
                       window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
                     }}
                     className="px-4 py-3 rounded-xl bg-[#1DA1F2] text-white text-sm font-bold hover:opacity-90 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"

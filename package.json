@@ -9,9 +9,15 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
+    "@reviewraven/shared-core": "file:packages/shared-core",
+    "@reviewraven/shared-intelligence": "file:packages/shared-intelligence",
+    "@reviewraven/shared-diagnostics": "file:packages/shared-diagnostics",
+    "@reviewraven/shared-cost-control": "file:packages/shared-cost-control",
+    "@reviewraven/shared-infra": "file:packages/shared-infra",
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"

@@ -1,7 +1,8 @@
+import { runHealthChecks } from '@reviewraven/shared-infra';
+
+const VERSION = '0.1.0';
+
 export async function GET() {
-  return Response.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: '0.1.0',
-  });
+  const health = await runHealthChecks(VERSION);
+  return Response.json(health);
 }
