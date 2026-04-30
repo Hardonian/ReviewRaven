@@ -3,16 +3,14 @@
 import { useState } from 'react';
 import { AnalyzeResponse, ErrorResponse } from '@/lib/types';
 
-function GhostIcon() {
+function RavenIcon() {
   return (
     <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
-        d="M12 2C7.58 2 4 5.58 4 10v10.5c0 .83 1.09 1.17 1.57.69l1.83-1.83c.39-.39 1.02-.39 1.41 0l1.83 1.83c.39.39 1.02.39 1.41 0l1.83-1.83c.39-.39 1.02-.39 1.41 0l1.83 1.83c.48.48 1.31.14 1.31-.69V10c0-4.42-3.58-8-8-8z"
+        d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C14.4853 3 16.7353 4.00736 18.364 5.63604L12 12L21 12Z"
         fill="currentColor"
-        opacity="0.9"
       />
-      <circle cx="9.5" cy="10" r="1.5" fill="#0f172a" />
-      <circle cx="14.5" cy="10" r="1.5" fill="#0f172a" />
+      <circle cx="10" cy="10" r="1.5" fill="#f8fafc" />
     </svg>
   );
 }
@@ -42,7 +40,7 @@ function ConfidenceMeter({ confidence }: { confidence: number }) {
     <div className="flex flex-col items-center">
       <div className="relative w-28 h-28">
         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" className="text-ghost-200" />
+          <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" className="text-raven-200" />
           <circle
             cx="50"
             cy="50"
@@ -60,27 +58,28 @@ function ConfidenceMeter({ confidence }: { confidence: number }) {
           <span className={`text-2xl font-bold ${color}`}>{confidence}%</span>
         </div>
       </div>
-      <span className="mt-1 text-xs text-ghost-500">confidence</span>
+      <span className="mt-1 text-xs text-raven-500">confidence</span>
     </div>
   );
 }
 
 function SignalRow({ name, score, description }: { name: string; score: number; description: string }) {
-  const barColor = score === 0 ? 'bg-buy' : score < 20 ? 'bg-caution/60' : 'bg-avoid';
+  const absScore = Math.abs(score);
+  const barColor = score < 0 ? 'bg-buy' : absScore < 20 ? 'bg-caution/60' : 'bg-avoid';
 
   return (
-    <div className="py-3 border-b border-ghost-100 last:border-b-0">
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-medium text-sm">{name}</span>
-        <span className="text-xs text-ghost-500">{score}</span>
+    <div className="py-3 border-b border-raven-100 last:border-b-0">
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-sm font-bold text-raven-900">{name}</span>
+        <span className="text-xs text-raven-500">{absScore}</span>
       </div>
-      <div className="w-full h-1.5 bg-ghost-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${barColor} transition-all duration-300`}
-          style={{ width: `${Math.min((score / 100) * 100, 100)}%` }}
+      <div className="w-full h-1.5 bg-raven-100 rounded-full overflow-hidden">
+        <div 
+          className="h-full transition-all duration-1000 ease-out" 
+          style={{ width: `${Math.min(100, (absScore / 50) * 100)}%`, backgroundColor: barColor }}
         />
       </div>
-      <p className="mt-1 text-xs text-ghost-500">{description}</p>
+      <p className="mt-1 text-xs text-raven-500">{description}</p>
     </div>
   );
 }
@@ -90,7 +89,7 @@ type AnalysisState = 'idle' | 'loading' | 'success' | 'error';
 export default function Home() {
   const [url, setUrl] = useState('');
   const [state, setState] = useState<AnalysisState>('idle');
-  const [result, setResult] = useState<AnalyzeResponse['data'] | null>(null);
+  const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState<ErrorResponse | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,7 +115,7 @@ export default function Home() {
         return;
       }
 
-      setResult(data as AnalyzeResponse['data']);
+      setResult(data as AnalyzeResponse);
       setState('success');
     } catch {
       setError({ ok: false, code: 'NETWORK_ERROR', message: 'Network error. Please try again.', retryable: true });
@@ -126,7 +125,9 @@ export default function Home() {
 
   const handleShare = async () => {
     if (!result) return;
-    const text = `ReviewGhost verdict for "${result.title || 'this product'}": ${result.result.verdict} (${result.result.confidence}% confidence)`;
+    const title = result.data.title || 'this product';
+    const analysis = result.data.result;
+    const text = `ReviewRaven verdict for "${title}": ${analysis.verdict} (${analysis.confidence}% confidence)`;
 
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(text);
@@ -136,9 +137,9 @@ export default function Home() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="w-full px-4 py-4 flex items-center justify-between max-w-3xl mx-auto">
-        <div className="flex items-center gap-2 text-ghost-700">
-          <GhostIcon />
-          <span className="font-bold text-lg">ReviewGhost</span>
+        <div className="flex items-center gap-2 text-raven-700">
+          <RavenIcon />
+          <span className="font-bold text-lg">ReviewRaven</span>
         </div>
       </header>
 
@@ -146,11 +147,11 @@ export default function Home() {
         <div className="w-full max-w-xl">
           {state === 'idle' && (
             <div className="text-center">
-              <h1 className="text-3xl sm:text-4xl font-bold text-ghost-900 mb-3">
-                Before you buy it,<br />
-                <span className="text-ghost-500">ghost the fake reviews.</span>
+              <h1 className="text-3xl sm:text-4xl font-bold text-raven-900 mb-3">
+                Watch the patterns, <br />
+                <span className="text-raven-500">detect the deception.</span>
               </h1>
-              <p className="text-ghost-500 mb-8">
+              <p className="text-raven-500 mb-8">
                 Paste a product link and get an honest trust verdict.
               </p>
             </div>
@@ -163,13 +164,14 @@ export default function Home() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="Paste Amazon, Walmart, or Best Buy link"
-                className="flex-1 px-4 py-3 rounded-xl border border-ghost-200 bg-white text-ghost-900 placeholder:text-ghost-400 focus:outline-none focus:ring-2 focus:ring-ghost-300 focus:border-transparent text-sm"
+                className="flex-1 px-4 py-3 rounded-xl border border-raven-200 bg-white text-raven-900 placeholder:text-raven-400 focus:outline-none focus:ring-2 focus:ring-raven-300 focus:border-transparent text-sm"
                 disabled={state === 'loading'}
+                required
               />
               <button
                 type="submit"
                 disabled={state === 'loading' || !url.trim()}
-                className="px-6 py-3 rounded-xl bg-ghost-900 text-white font-medium text-sm hover:bg-ghost-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                className="px-6 py-3 rounded-xl bg-raven-900 text-white font-medium text-sm hover:bg-raven-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
               >
                 {state === 'loading' ? (
                   <span className="flex items-center gap-2">
@@ -194,52 +196,52 @@ export default function Home() {
 
           {state === 'success' && result && (
             <div className="space-y-4 animate-fade-in-up">
-              {result.title && (
-                <p className="text-sm text-ghost-500 font-medium px-2 truncate" title={result.title}>
-                  {result.title}
+              {result.data.title && (
+                <p className="text-sm text-raven-500 font-medium px-2 truncate" title={result.data.title}>
+                  {result.data.title}
                 </p>
               )}
 
               <div className="p-8 rounded-3xl glass-card">
                 <div className="flex items-center justify-between mb-6">
-                  <VerdictBadge verdict={result.result.verdict} />
-                  <ConfidenceMeter confidence={result.result.confidence} />
+                  <VerdictBadge verdict={result.data.result.verdict} />
+                  <ConfidenceMeter confidence={result.data.result.confidence} />
                 </div>
 
-                <div className="mb-8 p-4 rounded-2xl bg-ghost-900/5 border border-ghost-900/10 backdrop-blur-md">
-                  <p className="text-xs text-ghost-600 italic font-medium leading-relaxed">
-                    &ldquo;{result.result.confidenceExplanation}&rdquo;
+                <div className="mb-8 p-4 rounded-2xl bg-raven-900/5 border border-raven-900/10 backdrop-blur-md">
+                  <p className="text-xs text-raven-600 italic font-medium leading-relaxed">
+                    &ldquo;{result.data.result.confidenceExplanation}&rdquo;
                   </p>
                 </div>
 
                 <div className="space-y-3 mb-8">
-                  {result.result.reasons.map((reason, i) => (
+                  {result.data.result.reasons.map((reason, i) => (
                     <div key={i} className="flex items-start gap-3">
-                      <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-ghost-400 shrink-0" />
-                      <p className="text-sm text-ghost-700 font-medium">{reason}</p>
+                      <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-raven-400 shrink-0" />
+                      <p className="text-sm text-raven-700 font-medium">{reason}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-ghost-900/5 pt-6 mb-6">
-                  <h3 className="font-bold text-xs uppercase tracking-widest text-ghost-400 mb-4">Risk Signals</h3>
+                <div className="border-t border-raven-900/5 pt-6 mb-6">
+                  <h3 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-4">Risk Signals</h3>
                   <div className="space-y-1">
-                    {result.result.signals.map((signal, i) => (
+                    {result.data.result.signals && result.data.result.signals.map((signal, i) => (
                       <SignalRow key={i} name={signal.name} score={signal.score} description={signal.description} />
                     ))}
                   </div>
                 </div>
 
-                {result.result.evidence && result.result.evidence.length > 0 && (
-                  <div className="border-t border-ghost-900/5 pt-6 mb-6">
+                {result.data.result.evidence && result.data.result.evidence.length > 0 && (
+                  <div className="border-t border-raven-900/5 pt-6 mb-6">
                     <h3 className="font-bold text-xs uppercase tracking-widest text-avoid mb-4">Evidence Snippets</h3>
                     <div className="space-y-4">
-                      {result.result.evidence.map((ev, i) => (
+                      {result.data.result.evidence.map((ev, i) => (
                         <div key={i} className="p-4 rounded-2xl bg-avoid/5 border-l-4 border-avoid shadow-sm transition-transform hover:scale-[1.01]">
-                          <p className="text-xs text-ghost-800 italic leading-relaxed">&ldquo;{ev.snippet}&rdquo;</p>
-                          <div className="mt-3 flex items-center justify-between">
+                          <p className="text-xs text-raven-800 italic leading-relaxed">&ldquo;{ev.snippet}&rdquo;</p>
+                          <div className="mt-1.5 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-raven-400 uppercase">{ev.source}</span>
                             <span className="text-[10px] font-black uppercase tracking-tighter text-avoid/70">{ev.signalId}</span>
-                            <span className="text-[10px] font-bold text-ghost-400 uppercase">{ev.source}</span>
                           </div>
                         </div>
                       ))}
@@ -247,16 +249,35 @@ export default function Home() {
                   </div>
                 )}
 
+                {(result.limitations?.length > 0 || result.nextSteps?.length) && (
+                  <div className="border-t border-raven-900/5 pt-6 mb-6">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <h3 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-2">Limitations</h3>
+                        <ul className="text-xs text-raven-500 list-disc list-inside pl-4">
+                          {result.limitations.map((l, i) => <li key={i}>{l}</li>)}
+                        </ul>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-xs uppercase tracking-widest text-raven-400 mb-2">Next Steps</h3>
+                        <ul className="text-xs text-raven-500 list-disc list-inside pl-4">
+                          {result.nextSteps.map((step, i) => <li key={i}>{step}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 mt-8">
                   <button
                     onClick={handleShare}
-                    className="px-4 py-3 rounded-xl border border-ghost-200 text-ghost-700 text-sm font-bold hover:bg-white transition-all shadow-sm active:scale-95"
+                    className="px-4 py-3 rounded-xl border border-raven-200 text-raven-700 text-sm font-bold hover:bg-white transition-all shadow-sm active:scale-95"
                   >
                     Copy Report
                   </button>
                   <button
                     onClick={() => {
-                      const text = encodeURIComponent(`ReviewGhost Verdict: ${result.result.verdict} (${result.result.confidence}% Confidence)\n\nTrust analysis for: ${result.title || 'this product'}\n\n#ReviewGhost #ConsumerSafety`);
+                      const text = encodeURIComponent(`ReviewRaven Verdict: ${result.verdict} (${result.confidence}% Confidence)\n\nTrust analysis for: ${result.title || 'this product'}\n\n#ReviewRaven #ConsumerSafety`);
                       window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
                     }}
                     className="px-4 py-3 rounded-xl bg-[#1DA1F2] text-white text-sm font-bold hover:opacity-90 transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
@@ -267,8 +288,8 @@ export default function Home() {
                     Post to X
                   </button>
                   <button
-                    onClick={() => { setState('idle'); setResult(null); setUrl(''); }}
-                    className="col-span-2 px-4 py-4 rounded-xl bg-ghost-900 text-white text-sm font-black uppercase tracking-widest hover:bg-ghost-800 transition-all shadow-lg active:scale-95"
+                    onClick={() => window.location.reload()}
+                    className="col-span-2 px-4 py-4 rounded-xl bg-raven-900 text-white text-sm font-black uppercase tracking-widest hover:bg-raven-800 transition-all shadow-lg active:scale-95"
                   >
                     Analyze New Product
                   </button>
@@ -279,8 +300,8 @@ export default function Home() {
         </div>
       </div>
 
-      <footer className="px-4 py-6 text-center text-xs text-ghost-400">
-        <p>ReviewGhost analyzes suspicious patterns, not fraud claims.</p>
+      <footer className="px-4 py-6 text-center text-xs text-raven-400">
+        <p>ReviewRaven analyzes suspicious patterns, not fraud claims.</p>
       </footer>
     </main>
   );

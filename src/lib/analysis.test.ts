@@ -123,4 +123,34 @@ describe('analyzeProduct', () => {
     expect(Array.isArray(result.nextSteps)).toBe(true);
     expect(result.nextSteps.length).toBeGreaterThan(0);
   });
+
+  it('applies category-specific weight adjustments (e.g., supplements)', () => {
+    // Supplements category has 1.8x weight for SIG-S002 (Verified Purchase Deficit)
+    const data = createScrapedData({
+      title: 'Mega Vitamin Booster', // Should detect as supplements
+      isVerified: [false, false, false, false, true], // 20% verified ratio -> SIG-S002 score 40
+    });
+
+    const result = analyzeProduct(data, 'https://example.com/vitamins');
+
+    const verifiedSignal = result.signals.find(s => s.id === 'SIG-S002');
+    expect(verifiedSignal).toBeDefined();
+    // 40 * 1.8 = 72
+    expect(verifiedSignal?.score).toBe(72);
+  });
+
+  it('includes evidence snippets in the result', () => {
+    const data = createScrapedData({
+      reviewSnippets: [
+        'As an AI language model, I cannot provide a personal opinion.',
+        'This is a great product!',
+      ],
+    });
+
+    const result = analyzeProduct(data, 'https://example.com/product');
+
+    expect(result.evidence).toBeDefined();
+    expect(result.evidence?.length).toBeGreaterThan(0);
+    expect(result.evidence?.[0].snippet).toContain('As an AI language model');
+  });
 });

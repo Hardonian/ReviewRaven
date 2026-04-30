@@ -1,6 +1,6 @@
 import { categoryRules } from './intel/categoryRegistry';
 
-export type ProductCategory = 'electronics' | 'apparel' | 'home' | 'beauty' | 'books' | 'supplements' | 'tools' | 'digital' | 'unknown';
+export type ProductCategory = 'electronics' | 'apparel' | 'home' | 'beauty' | 'books' | 'supplements' | 'tools' | 'digital' | 'unknown' | 'niche';
 
 export function detectCategory(title: string | null, url: string): ProductCategory {
   const titleLower = (title || '').toLowerCase();
@@ -16,7 +16,7 @@ export function detectCategory(title: string | null, url: string): ProductCatego
   return 'unknown';
 }
 
-export function getCategoryAdjustments(category: ProductCategory) {
+export function getCategoryAdjustments(category: string) {
   const rule = categoryRules.find((r) => r.category === category);
   return rule ? rule.adjustments : [];
 }

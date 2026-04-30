@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectCategory, getCategoryWeights } from './category';
+import { detectCategory, getCategoryAdjustments } from './category';
 
 describe('detectCategory', () => {
   it('detects electronics from title', () => {
@@ -39,27 +39,31 @@ describe('detectCategory', () => {
   });
 });
 
-describe('getCategoryWeights', () => {
-  it('returns weights for electronics', () => {
-    const weights = getCategoryWeights('electronics');
-    expect(weights.ratingSkewWeight).toBeGreaterThan(1);
-    expect(weights.volumeWeight).toBeLessThan(1);
+describe('getCategoryAdjustments', () => {
+  it('returns adjustments for electronics', () => {
+    const adjustments = getCategoryAdjustments('electronics');
+    const ratingSkew = adjustments.find(a => a.signalId === 'SIG-S009');
+    const volumePenalty = adjustments.find(a => a.signalId === 'SIG-S010');
+    expect(ratingSkew?.weightModifier).toBeGreaterThan(1);
+    expect(volumePenalty?.weightModifier).toBeLessThan(1);
   });
 
-  it('returns weights for apparel', () => {
-    const weights = getCategoryWeights('apparel');
-    expect(weights.verifiedRatioWeight).toBeGreaterThan(1);
-    expect(weights.genericLanguageWeight).toBeLessThan(1);
+  it('returns adjustments for apparel', () => {
+    const adjustments = getCategoryAdjustments('apparel');
+    const verifiedRatio = adjustments.find(a => a.signalId === 'SIG-S002');
+    const genericLang = adjustments.find(a => a.signalId === 'SIG-S003');
+    expect(verifiedRatio?.weightModifier).toBeGreaterThan(1);
+    expect(genericLang?.weightModifier).toBeLessThan(1);
   });
 
-  it('returns default weights for unknown', () => {
-    const weights = getCategoryWeights('unknown');
-    expect(weights.ratingSkewWeight).toBe(1.0);
-    expect(weights.volumeWeight).toBe(1.0);
+  it('returns empty array for unknown', () => {
+    const adjustments = getCategoryAdjustments('unknown');
+    expect(adjustments.length).toBe(0);
   });
 
-  it('returns weights for niche that reduce volume penalty', () => {
-    const weights = getCategoryWeights('niche');
-    expect(weights.volumeWeight).toBeLessThan(0.5);
+  it('returns adjustments for niche that reduce volume penalty', () => {
+    const adjustments = getCategoryAdjustments('niche');
+    const volumePenalty = adjustments.find(a => a.signalId === 'SIG-S010');
+    expect(volumePenalty?.weightModifier).toBeLessThan(0.5);
   });
 });

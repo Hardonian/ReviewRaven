@@ -25,6 +25,7 @@ export const reviewSignals: ReviewSignal[] = [
   { id: 'SIG-S008', name: 'Author_Patterns', type: 'SUSPICIOUS', weight: -35, description: 'Sequential naming patterns detected among reviewers.' },
   { id: 'SIG-S009', name: 'Rating_Skew', type: 'SUSPICIOUS', weight: -25, description: 'Rating is unusually high or inconsistent with text.' },
   { id: 'SIG-S010', name: 'Low_Volume_Risk', type: 'SUSPICIOUS', weight: -20, description: 'Insufficient reviews for statistically significant trust.' },
+  { id: 'SIG-S099', name: 'Data_Quality_Risk', type: 'SUSPICIOUS', weight: -20, description: 'Minimal product data available for a reliable trust assessment.' },
 
   // SAFE SIGNALS
   { id: 'SIG-G001', name: 'Verified_Purchase_Verified', type: 'SAFE', weight: 25, description: 'Purchase confirmed by platform.' },
