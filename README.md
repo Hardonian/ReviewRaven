@@ -1,25 +1,59 @@
 # ReviewGhost
-**“Ghost the fake reviews before you buy.”**
 
-ReviewGhost is a consumer-protection tool designed to identify suspicious patterns in product reviews. It helps users avoid products with manipulated feedback by providing a simple, deterministic verdict.
+> Before you buy it, ghost the fake reviews.
 
-## How It Works
-1. **URL Input**: Paste a product link from supported platforms (Amazon, Walmart, etc.).
-2. **Signal Analysis**: Our engine scans for linguistic anomalies, temporal spikes in review frequency, and reviewer account health.
-3. **Verdict**: Returns a clear recommendation: **BUY**, **CAUTION**, **AVOID**, or **UNKNOWN**.
+ReviewGhost is a single-function B2C app that analyzes product URLs and returns a trust verdict based on review patterns.
 
-## Limitations
-- **Patterns, Not Truth**: We identify *suspicious patterns* and *low trust signals*. We do not claim reviews are "fake" in a legal sense.
-- **Scraping**: Analysis depends on data availability. Some sites may block analysis or return partial results.
-- **New Products**: Products with very few reviews may return **UNKNOWN**.
+## What it does
 
-## Setup Instructions
-1. Clone the repository: `git clone https://github.com/Hardonian/ReviewGhost.git`
-2. Install dependencies: `npm install`
-3. Configure environment variables: Copy `.env.example` to `.env` and add your scraping keys.
-4. Run locally: `npm run dev`
+1. Paste a product link (Amazon, Walmart, or Best Buy)
+2. Get a trust verdict: **BUY**, **CAUTION**, or **AVOID**
+3. See the reasoning behind the verdict
 
-## Verification Commands
-- `npm run lint`: Check for code style consistency.
-- `npm run test`: Run the signal analysis test suite.
-- `npm run build`: Verify the production bundle.
+## What it does NOT do
+
+- No accounts required
+- No dashboards
+- No affiliate links or spam
+- No claims of fraud — only "suspicious patterns" and "low trust signals"
+
+## Supported stores
+
+- Amazon (all regional domains)
+- Walmart
+- Best Buy
+
+## Getting started
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Build
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+## Test
+
+```bash
+npm run test
+```
+
+## Verdict thresholds
+
+| Score | Verdict | Meaning |
+|-------|---------|---------|
+| 0–30 | BUY | No significant suspicious patterns detected |
+| 31–60 | CAUTION | Moderate concern — review patterns warrant scrutiny |
+| 61–100 | AVOID | High concern — multiple suspicious patterns detected |
+
+## License
+
+See [LICENSE](LICENSE).

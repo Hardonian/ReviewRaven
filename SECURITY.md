@@ -1,18 +1,39 @@
-# SECURITY.md - Safety & Infrastructure
+# Security Policy
 
-## SSRF Protection
-The analysis engine uses a strictly isolated proxy layer for all external URL fetching.
-- **Allowlist Only**: Only recognized e-commerce domains are processed.
-- **IP Rotation**: Prevents tracking of our infrastructure by scraped platforms.
+## Supported Versions
 
-## Scraping Limits
-To remain a good citizen of the web:
-- We adhere to `robots.txt` where possible.
-- Rate limiting is enforced per user session to prevent abuse of our upstream providers.
+| Version | Supported |
+|---------|-----------|
+| 0.1.0   | Yes       |
 
-## Data Storage (Zero Persistence)
-- **No PII**: We do not collect names, emails, or IP addresses of our users.
-- **No Analysis Logs**: Once a verdict is returned, the raw review data is purged from memory. We only store the deterministic verdict ID for sharing purposes.
+## Security Features
 
-## Safe Analysis Claims
-We do not perform "hacking" or unauthorized access. We only analyze publicly available data that any consumer could see, but at a scale and speed impossible for a human.
+### SSRF Protection
+- Only HTTPS URLs are accepted
+- Internal IP ranges are blocked (10.x, 172.16-31.x, 192.168.x, 127.x)
+- Localhost access is blocked
+- Only allowed e-commerce hosts are processed
+
+### Rate Limiting
+- In-memory rate limiting at 5 requests per minute per IP
+- Prevents abuse of the scraping engine
+
+### Input Validation
+- URL format validation before any processing
+- HTML sanitization of scraped content
+- No script execution — only static HTML parsing
+
+### Data Handling
+- No PII collected or stored
+- No cookies or tracking beyond rate limiting
+- All analytics are anonymous event counts
+
+## Reporting a Vulnerability
+
+If you discover a security vulnerability, please report it responsibly.
+
+1. Do not open a public issue
+2. Contact the maintainer directly
+3. Include steps to reproduce and potential impact
+
+We will respond within 48 hours.
