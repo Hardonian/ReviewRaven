@@ -43,4 +43,9 @@
       transform: translateY(0);
     }
   }
+
+  .signal-bar {
+    width: var(--width, 0%);
+    background-color: var(--bg, #ccc);
+  }
 }

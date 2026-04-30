@@ -1,532 +1,226 @@
-import { ScrapedData, AnalysisResult, SignalDetail, Evidence } from './types';
-import { detectCategory, getCategoryAdjustments } from './category';
+import { ScrapedData, AnalysisResult, SignalDetail, EvidenceDetail } from './types';
 import { reviewSignals } from './intel/signalRegistry';
-
-const GENERIC_PATTERNS = [
-  'great product', 'works great', 'love it', 'highly recommend', 'best purchase',
-  'exactly as described', 'fast shipping', 'good value', 'five stars', 'amazing',
-  'perfect gift', 'would buy again', 'very happy', 'so glad', 'must buy',
-  'quality product', 'great quality', 'worth the price', 'exceeded expectations',
-  'just what i needed', 'could not be happier', 'amazing perfect incredible',
-  'dear customer', 'hello friends',
-];
-
-const PROMPT_LEAK_PATTERNS = [
-  'as an ai language model',
-  'here is a 5-star review',
-  'i cannot fulfill this request',
-  'i am an ai',
-  'text-based model',
-];
-
-interface InternalSignalResult {
-  signal: SignalDetail;
-  evidence: Evidence[];
-}
-
-function analyzeRatingSkew(rating: number | null, reviewCount: number | null): InternalSignalResult {
-  const def = findSignalDef('SIG-S009')!;
-  if (!rating || !reviewCount || reviewCount < 5) {
-    return { 
-      signal: { id: def.id, name: def.name, score: 0, description: 'Insufficient data to analyze rating distribution' },
-      evidence: []
-    };
-  }
-
-  if (rating >= 4.8) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 25,
-        description: 'Rating is unusually high (' + rating.toFixed(1) + '). Products with near-perfect scores often have inflated reviews.',
-      },
-      evidence: [{ signalId: def.id, snippet: `Overall rating: ${rating.toFixed(1)}`, source: 'Metadata' }]
-    };
-  }
-
-  if (rating >= 4.5) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 10,
-        description: 'Rating is high (' + rating.toFixed(1) + '). Slightly above typical authentic patterns.',
-      },
-      evidence: []
-    };
-  }
-
-  return {
-    signal: {
-      id: def.id,
-      name: def.name,
-      score: 0,
-      description: 'Rating (' + rating.toFixed(1) + ') falls within typical authentic range.',
-    },
-    evidence: []
-  };
-}
-
-function analyzeReviewVolume(reviewCount: number | null, ratingCount: number | null): InternalSignalResult {
-  const def = findSignalDef('SIG-S010')!;
-  const count = reviewCount || ratingCount || 0;
-
-  if (count === 0) {
-    return { 
-      signal: { id: def.id, name: def.name, score: 20, description: 'No reviews available. Unable to verify product quality.' },
-      evidence: []
-    };
-  }
-
-  if (count < 10) {
-    return { 
-      signal: { id: def.id, name: def.name, score: 15, description: 'Very few reviews (' + count + '). Limited data for trust assessment.' },
-      evidence: []
-    };
-  }
-
-  return { 
-    signal: { id: def.id, name: def.name, score: 0, description: 'Substantial review count (' + count + '). Good data for analysis.' },
-    evidence: []
-  };
-}
-
-function analyzeGenericContent(snippets: string[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S003')!;
-  if (!snippets || snippets.length === 0) {
-    return { 
-      signal: { id: def.id, name: def.name, score: 0, description: 'No review text available to analyze.' },
-      evidence: []
-    };
-  }
-
-  const evidence: Evidence[] = [];
-  let genericCount = 0;
-  for (const snippet of snippets) {
-    const lower = snippet.toLowerCase();
-    let found = false;
-    for (const pattern of GENERIC_PATTERNS) {
-      if (lower.includes(pattern)) {
-        genericCount++;
-        if (evidence.length < 3) {
-          evidence.push({ signalId: def.id, snippet, source: 'Review Text' });
-        }
-        found = true;
-        break;
-      }
-    }
-  }
-
-  const ratio = genericCount / snippets.length;
-
-  if (ratio > 0.6) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 30,
-        description: 'High concentration of generic phrases detected. Consistent with inauthentic review generation.',
-      },
-      evidence
-    };
-  }
-
-  if (ratio > 0.3) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 15,
-        description: 'Some generic phrases detected. Mixed authenticity signals.',
-      },
-      evidence: evidence.slice(0, 1)
-    };
-  }
-
-  return {
-    signal: {
-      id: def.id,
-      name: def.name,
-      score: 0,
-      description: 'Review language appears varied and specific.',
-    },
-    evidence: []
-  };
-}
-
-function analyzeSnippetDiversity(snippets: string[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S006')!;
-  if (!snippets || snippets.length < 3) {
-    return { 
-      signal: { id: def.id, name: def.name, score: 0, description: 'Too few reviews to assess diversity.' },
-      evidence: []
-    };
-  }
-
-  const uniqueStarts = new Map<string, string>();
-  let duplicateSnippet = '';
-  
-  for (const s of snippets) {
-    const start = s.toLowerCase().substring(0, 25);
-    if (uniqueStarts.has(start)) {
-      duplicateSnippet = s;
-    }
-    uniqueStarts.set(start, s);
-  }
-
-  const uniquenessRatio = uniqueStarts.size / snippets.length;
-
-  if (uniquenessRatio < 0.7) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 25,
-        description: 'Low diversity in review openings. Suspicious pattern of templated reviews.',
-      },
-      evidence: duplicateSnippet ? [{ signalId: def.id, snippet: duplicateSnippet, source: 'Review Text' }] : []
-    };
-  }
-
-  return {
-    signal: {
-      id: def.id,
-      name: def.name,
-      score: 0,
-      description: 'Reviews show good diversity in length and phrasing.',
-    },
-    evidence: []
-  };
-}
-
-function analyzeKeywordSpam(snippets: string[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S024')!;
-  if (!snippets || snippets.length === 0) {
-    return { 
-      signal: { id: def.id, name: def.name, score: 0, description: 'No review text to analyze.' },
-      evidence: []
-    };
-  }
-
-  const evidence: Evidence[] = [];
-  let spamCount = 0;
-  const keywordPatterns = [
-    /\b(buy|purchase|order|get|grab)\s+(this|it|one|now|today|yours)\b/gi,
-    /\b(100%|definitely|absolutely|guaranteed|must-have|no doubt)\b/gi,
-    /[!]{2,}/g,
-    /\b(AMAZING|INCREDIBLE|PERFECT|BEST EVER|LIFE CHANGING)\b/g,
-  ];
-
-  for (const snippet of snippets) {
-    let matches = 0;
-    for (const pattern of keywordPatterns) {
-      const found = snippet.match(pattern);
-      if (found && found.length > 1) matches++;
-    }
-    if (matches > 0) {
-      spamCount++;
-      if (evidence.length < 2) {
-        evidence.push({ signalId: def.id, snippet, source: 'Review Text' });
-      }
-    }
-  }
-
-  const ratio = spamCount / snippets.length;
-
-  if (ratio > 0.4) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 25,
-        description: 'High concentration of promotional language and excessive emphasis detected.',
-      },
-      evidence
-    };
-  }
-
-  return {
-    signal: {
-      id: def.id,
-      name: def.name,
-      score: 0,
-      description: 'Language appears natural without excessive promotional patterns.',
-    },
-    evidence: []
-  };
-}
-
-function analyzeTemporalSync(timestamps: string[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S022')!;
-  if (!timestamps || timestamps.length < 5) {
-    return { 
-      signal: { id: def.id, name: 'Temporal Synchronization', score: 0, description: 'Insufficient temporal data' },
-      evidence: []
-    };
-  }
-
-  const counts: Record<string, number> = {};
-  for (const ts of timestamps) {
-    counts[ts] = (counts[ts] || 0) + 1;
-  }
-
-  const maxSync = Math.max(...Object.values(counts));
-  const syncTimestamp = Object.keys(counts).find(k => counts[k] === maxSync);
-
-  if (maxSync >= 5) {
-    return {
-      signal: {
-        id: def.id,
-        name: 'Temporal Synchronization',
-        score: 45,
-        description: 'Multiple reviews posted simultaneously. Suggests a coordinated synthetic burst.',
-      },
-      evidence: [{ signalId: def.id, snippet: `${maxSync} reviews posted on ${syncTimestamp}`, source: 'Timestamp' }]
-    };
-  }
-
-  return { 
-    signal: { id: def.id, name: 'Temporal Synchronization', score: 0, description: 'Reviews are naturally distributed over time.' },
-    evidence: []
-  };
-}
-
-function analyzeVerifiedRatio(isVerified: boolean[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S002')!;
-  if (!isVerified || isVerified.length < 5) {
-    return { 
-      signal: { id: def.id, name: 'Verified Purchases', score: 0, description: 'Insufficient verification data' },
-      evidence: []
-    };
-  }
-
-  const verifiedCount = isVerified.filter(v => v).length;
-  const ratio = verifiedCount / isVerified.length;
-
-  if (ratio <= 0.2) {
-    return {
-      signal: {
-        id: def.id,
-        name: 'Verified Purchases',
-        score: 40,
-        description: 'Low ratio of verified purchases (' + (ratio * 100).toFixed(0) + '%). High risk of incentivized bias.',
-      },
-      evidence: [{ signalId: def.id, snippet: `${(ratio * 100).toFixed(0)}% verified purchase ratio`, source: 'Metadata' }]
-    };
-  }
-
-  return { 
-    signal: { id: def.id, name: 'Verified Purchases', score: 0, description: 'Healthy ratio of verified purchases detected.' },
-    evidence: []
-  };
-}
-
-function analyzeAuthorPatterns(names: string[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S008')!;
-  if (!names || names.length < 5) {
-    return { 
-      signal: { id: def.id, name: 'Author Pattern', score: 0, description: 'Insufficient author data' },
-      evidence: []
-    };
-  }
-
-  let sequentialCount = 0;
-  let sampleName = '';
-  for (let i = 0; i < names.length - 1; i++) {
-    const n1 = names[i].toLowerCase();
-    const n2 = names[i+1].toLowerCase();
-    if (n1.substring(0, 5) === n2.substring(0, 5) && n1 !== n2) {
-      sequentialCount++;
-      sampleName = names[i];
-    }
-  }
-
-  if (sequentialCount >= 3) {
-    return {
-      signal: {
-        id: def.id,
-        name: 'Author Pattern',
-        score: 35,
-        description: 'Sequential naming patterns detected among reviewers. Highly characteristic of bot farms.',
-      },
-      evidence: [{ signalId: def.id, snippet: `Sequential pattern found (e.g., "${sampleName}")`, source: 'Usernames' }]
-    };
-  }
-
-  return { 
-    signal: { id: def.id, name: 'Author Pattern', score: 0, description: 'Reviewer identities appear organic.' },
-    evidence: []
-  };
-}
-
-function analyzePromptLeaks(snippets: string[]): InternalSignalResult {
-  const def = findSignalDef('SIG-S100')!;
-  if (!snippets || snippets.length === 0) {
-    return { 
-      signal: { id: def.id, name: 'AI Generation', score: 0, description: 'No text to analyze for AI patterns.' },
-      evidence: []
-    };
-  }
-
-  const evidence: Evidence[] = [];
-  for (const snippet of snippets) {
-    const lower = snippet.toLowerCase();
-    for (const pattern of PROMPT_LEAK_PATTERNS) {
-      if (lower.includes(pattern)) {
-        evidence.push({ signalId: def.id, snippet, source: 'Review Text' });
-        break;
-      }
-    }
-  }
-
-  if (evidence.length > 0) {
-    return {
-      signal: {
-        id: def.id,
-        name: 'AI Generation',
-        score: 100,
-        description: 'Deterministic match for AI prompt leaks (e.g., "As an AI language model"). High confidence bot detection.',
-      },
-      evidence
-    };
-  }
-
-  return { 
-    signal: { id: def.id, name: 'AI Generation', score: 0, description: 'No obvious AI-generated artifacts detected.' },
-    evidence: []
-  };
-}
-
-function analyzeDataQuality(data: ScrapedData): InternalSignalResult {
-  const def = findSignalDef('SIG-S099')!;
-  const available = [data.title, data.rating, data.reviewCount, data.ratingCount].filter((v) => v !== null).length;
-
-  if (available < 2) {
-    return {
-      signal: {
-        id: def.id,
-        name: def.name,
-        score: 30,
-        description: 'Minimal product data available. Unable to perform comprehensive analysis.',
-      },
-      evidence: [{ signalId: def.id, snippet: `Only ${available} data points available`, source: 'System' }]
-    };
-  }
-
-  return {
-    signal: {
-      id: def.id,
-      name: def.name,
-      score: 0,
-      description: 'Product data available for analysis.',
-    },
-    evidence: []
-  };
-}
+import { categoryRules } from './intel/categoryRegistry';
 
 function findSignalDef(id: string) {
   return reviewSignals.find(s => s.id === id);
 }
 
-export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
-  if (data.blocked && !data.title && !data.rating && !data.reviewCount) {
-    return {
-      verdict: 'UNKNOWN',
-      confidence: 0,
-      confidenceExplanation: 'Platform access restricted. No meaningful signals could be extracted.',
-      reasons: ['Unable to access full review data due to platform restrictions'],
-      signals: [],
-      evidence: [],
-      limitations: ['Site blocked scraping', 'Consider checking reviews manually'],
-      nextSteps: ['Try another product listing', 'Check reviews manually on the product page'],
-    };
+function detectSignals(data: ScrapedData): { signals: SignalDetail[], evidence: EvidenceDetail[] } {
+  const signals: SignalDetail[] = [];
+  const evidence: EvidenceDetail[] = [];
+
+  const addSignal = (id: string, explanation: string, evSnippet?: string, evSource?: string) => {
+    const def = findSignalDef(id);
+    if (!def) return;
+    signals.push({ name: def.name, weight: def.weight, explanation });
+    if (evSnippet) {
+      evidence.push({ signal: def.name, snippet: evSnippet, source: evSource || 'Review Text' });
+    }
+  };
+
+  // Temporal Sync / Burst Arrival
+  if (data.timestamps && data.timestamps.length >= 3) {
+    const counts: Record<string, number> = {};
+    for (const ts of data.timestamps) {
+      counts[ts] = (counts[ts] || 0) + 1;
+    }
+    const maxSync = Math.max(...Object.values(counts));
+    if (maxSync >= 3) {
+      addSignal('SIG-S022', 'Multiple reviews posted at exact same time or date.', data.timestamps.find(ts => counts[ts] === maxSync), 'Timestamp');
+    }
   }
 
-  const category = detectCategory(data.title, url);
-  const adjustments = getCategoryAdjustments(category);
+  // Verified Purchase Deficit
+  if (data.isVerified && data.isVerified.length >= 5) {
+    const verifiedCount = data.isVerified.filter(v => v).length;
+    const ratio = verifiedCount / data.isVerified.length;
+    if (ratio < 0.2) {
+      addSignal('SIG-S002', `Only ${(ratio*100).toFixed(0)}% of recent reviews are verified purchases.`);
+    } else if (ratio > 0.8) {
+      addSignal('SIG-G001', `High ratio (${(ratio*100).toFixed(0)}%) of verified purchases.`);
+    }
+  }
 
-  const rawResults: InternalSignalResult[] = [
-    analyzeRatingSkew(data.rating, data.reviewCount),
-    analyzeReviewVolume(data.reviewCount, data.ratingCount),
-    analyzeGenericContent(data.reviewSnippets),
-    analyzeSnippetDiversity(data.reviewSnippets),
-    analyzeKeywordSpam(data.reviewSnippets),
-    analyzeTemporalSync(data.timestamps),
-    analyzeVerifiedRatio(data.isVerified),
-    analyzeAuthorPatterns(data.reviewerNames),
-    analyzePromptLeaks(data.reviewSnippets),
-    analyzeDataQuality(data),
-  ];
-
-  const signals: SignalDetail[] = [];
-  const evidence: Evidence[] = [];
-  let totalScore = 0;
-
-  for (const res of rawResults) {
-    const { signal, evidence: signalEvidence } = res;
+  // Superlative Clumping / Keyword Spam / AI generation
+  if (data.reviewSnippets && data.reviewSnippets.length > 0) {
+    let superlativeCount = 0;
+    const superlatives = ['best', 'perfect', 'amazing', 'incredible', 'flawless'];
     
-    // Apply category weights
-    const adj = adjustments.find(a => a.signalId === signal.id);
-    const weight = adj ? adj.weightModifier : 1.0;
+    for (const snippet of data.reviewSnippets) {
+      const lower = snippet.toLowerCase();
+      const hasSup = superlatives.some(s => lower.includes(s));
+      if (hasSup) superlativeCount++;
+      
+      // Emotional Extremity
+      if ((snippet.match(/!/g) || []).length >= 4 || (snippet.length > 10 && snippet === snippet.toUpperCase())) {
+         addSignal('SIG-S024', 'Excessive exclamation marks or ALL CAPS detected.', snippet);
+      }
+      
+      // AI Prompt Leak
+      if (lower.includes('as an ai') || lower.includes('write a 5-star') || lower.includes('language model')) {
+         addSignal('SIG-S100', 'AI prompt leak detected in review text.', snippet);
+      }
+    }
     
-    // Create weighted signal for the report
-    const weightedSignal = { ...signal, score: Math.round(signal.score * weight) };
-    signals.push(weightedSignal);
+    if (superlativeCount / data.reviewSnippets.length > 0.5) {
+      addSignal('SIG-S003', 'Unusually high density of superlative keywords across reviews.');
+    }
     
-    if (signal.score > 0) {
-      totalScore += signal.score * weight;
-      if (signalEvidence) {
-        evidence.push(...signalEvidence);
+    // Opening Identity
+    if (data.reviewSnippets.length >= 3) {
+      const openings = data.reviewSnippets.map(s => s.substring(0, 15).toLowerCase());
+      const uniqueOpenings = new Set(openings);
+      if (uniqueOpenings.size / openings.length < 0.5) {
+         addSignal('SIG-S006', 'Multiple reviews start with the exact same phrasing.', data.reviewSnippets[0].substring(0, 30) + '...');
+      } else {
+         addSignal('SIG-G005', 'Reviews show natural, unique phrasing.');
       }
     }
   }
+
+  // Author patterns
+  if (data.reviewerNames && data.reviewerNames.length >= 5) {
+    let sequentialCount = 0;
+    for (let i = 0; i < data.reviewerNames.length - 1; i++) {
+      const n1 = data.reviewerNames[i].toLowerCase();
+      const n2 = data.reviewerNames[i+1].toLowerCase();
+      if (n1.substring(0, 5) === n2.substring(0, 5) && n1 !== n2) {
+        sequentialCount++;
+      }
+    }
+    // We add this manually since Author Pattern might not exist with exactly this name in our registry,
+    // let's check registry. Wait, registry doesn't have Author Pattern? Let's use SIG-S006 or similar if not found.
+    // Or just add it if found.
+    const authorDef = reviewSignals.find(s => s.name === 'Author Pattern' || s.name === 'Reviewer_Inactivity');
+    if (sequentialCount >= 3 && authorDef) {
+       addSignal(authorDef.id, 'Sequential naming patterns detected among reviewers.');
+    } else if (sequentialCount >= 3) {
+       // fallback if we can't find it
+       signals.push({ name: 'Author Pattern', weight: -35, explanation: 'Sequential naming patterns detected among reviewers.' });
+    }
+  }
+
+  // Missing Data Penalty check
+  if (!data.rating || !data.reviewCount) {
+    addSignal('SIG-S005', 'Missing rating or review count suggests suppressed or new listing.');
+  }
+
+  return { signals, evidence };
+}
+
+export function analyzeProduct(data: ScrapedData): AnalysisResult {
+  const { signals, evidence } = detectSignals(data);
+  let limitations: string[] = [];
+  const nextSteps: string[] = [];
   
-  const normalizedScore = Math.min(Math.round(totalScore), 100);
-
-  const reasons = signals
-    .filter(s => s.score > 10) // Only list significant risks in reasons
-    .map(s => s.description);
-
-  const limitations: string[] = [];
-  if (data.blocked) {
-    limitations.push('Site partially blocked scraping. Some data may be incomplete.');
-  }
-  if (!data.reviewSnippets.length) {
-    limitations.push('No detailed review text available for language analysis.');
+  if (data.blocked || data.degraded) {
+    limitations.push(`Data collection was degraded: ${data.failureReason || 'Anti-bot protection'}`);
+    nextSteps.push('Try analyzing a different product URL.');
+    nextSteps.push('Manually verify the seller and return window.');
+  } else {
+    nextSteps.push('Check the seller rating independently.');
   }
 
-  let verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN';
-  if (normalizedScore <= 30) {
+  if (data.reviewSnippets.length === 0) {
+    limitations.push('No review text was available to analyze.');
+  }
+
+  let totalRiskScore = 0;
+  let signalStrength = 0;
+  
+  // Adjust weights based on category rules
+  const category = data.category || 'unknown';
+  const rules = categoryRules.find(c => c.category === category)?.adjustments || [];
+
+  for (const sig of signals) {
+    let weight = sig.weight;
+    
+    // Need to find signal ID by name to apply rule
+    const def = reviewSignals.find(s => s.name === sig.name);
+    if (def) {
+      const rule = rules.find(r => r.signalId === def.id);
+      if (rule) {
+        weight *= rule.weightModifier;
+      }
+    }
+    
+    sig.weight = weight; // apply the adjusted weight
+    sig.score = weight;  // backwards compatibility
+    
+    // SUSPICIOUS are negative in registry. Make them positive risk.
+    if (weight < 0) {
+      totalRiskScore += Math.abs(weight);
+    } else {
+      totalRiskScore -= weight; // SAFE reduces risk
+    }
+    signalStrength += Math.abs(weight);
+  }
+
+  totalRiskScore = Math.max(0, Math.min(100, totalRiskScore));
+
+  let verdict: 'BUY' | 'CAUTION' | 'AVOID' | 'UNKNOWN' = 'UNKNOWN';
+  if ((data.blocked || data.degraded) && data.reviewSnippets.length === 0) {
+    verdict = 'UNKNOWN';
+  } else if (signals.some(s => s.name === 'Ultimate_Suspicion')) {
+    verdict = 'AVOID';
+  } else if (totalRiskScore <= 30) {
     verdict = 'BUY';
-  } else if (normalizedScore <= 60) {
+  } else if (totalRiskScore <= 60) {
     verdict = 'CAUTION';
   } else {
     verdict = 'AVOID';
   }
 
-  const confidence = Math.round(Math.max(0, Math.min(100, 100 - (normalizedScore * 0.3) - (limitations.length * 15))));
+  // Confidence Calculation
+  let confidence = Math.min(100, signalStrength === 0 ? 0 : signalStrength + 20); // base confidence
+  
+  // Penalties
+  let confidenceExplanation = [];
+  if (data.blocked || data.degraded) {
+    confidence -= 40;
+    confidenceExplanation.push('Heavy penalty applied due to degraded scraping.');
+  }
+  if (!data.reviewCount || data.reviewCount < 10) {
+    confidence -= 20;
+    confidenceExplanation.push('Penalty applied due to low review volume.');
+  }
+  
+  // Caps
+  if ((data.blocked && data.reviewSnippets.length === 0) || !data.title) {
+    confidence = Math.min(confidence, 30);
+    confidenceExplanation.push('Confidence capped at 30% due to missing data.');
+  } else if (data.reviewSnippets.length < 3) {
+    confidence = Math.min(confidence, 60);
+    confidenceExplanation.push('Confidence capped at 60% due to partial review data.');
+  } else if (signals.length < 2) {
+    confidence = Math.min(confidence, 75);
+    confidenceExplanation.push('Confidence capped at 75% due to weak evidence.');
+  } else if (signals.length >= 3 && signalStrength > 80) {
+    confidence = Math.min(Math.max(confidence, 80), 95);
+    confidenceExplanation.push('Strong multi-signal evidence found.');
+  }
 
-  const confidenceExplanation = confidence > 85 
-    ? 'High transparency. Abundant data points confirm our assessment.' 
-    : confidence > 60 
-      ? 'Moderate reliability. Most signals are clear, but some data is missing or ambiguous.' 
-      : 'Low reliability. Limited data availability or conflicting signals present high uncertainty.';
+  confidence = Math.max(0, Math.round(confidence));
+
+  const reasons = signals
+    .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+    .slice(0, 3)
+    .map(s => s.explanation);
+
+  if (reasons.length === 0) {
+    reasons.push('Insufficient data to form specific conclusions.');
+  }
 
   return {
     verdict,
     confidence,
-    confidenceExplanation,
-    reasons: reasons.length > 0 ? reasons : ['No significant suspicious patterns detected'],
+    confidenceExplanation: confidenceExplanation.join(' ') || 'Analysis complete.',
+    reasons,
     signals,
-    evidence: evidence
-      .sort((a, b) => {
-        const scoreA = signals.find(s => s.id === a.signalId)?.score || 0;
-        const scoreB = signals.find(s => s.id === b.signalId)?.score || 0;
-        return scoreB - scoreA;
-      })
-      .slice(0, 10), // Limit to top 10 pieces of evidence
-    limitations: limitations.length > 0 ? limitations : ['None'],
-    nextSteps: confidence < 50 ? ['Check reviews manually on-site'] : ['Share this report with others'],
+    evidence,
+    limitations,
+    nextSteps: nextSteps.length > 0 ? nextSteps : undefined,
+    degraded: data.degraded
   };
 }

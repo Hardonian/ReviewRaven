@@ -75,10 +75,10 @@ function SignalRow({ name, score, description }: { name: string; score: number; 
       </div>
       <div className="w-full h-1.5 bg-raven-100 rounded-full overflow-hidden">
         <div 
-          className="h-full transition-all duration-1000 ease-out bg-current" 
+          className="h-full transition-all duration-1000 ease-out signal-bar" 
           style={{ 
-            width: `${Math.min(100, (absScore / 50) * 100)}%`,
-            backgroundColor: score < 0 ? 'var(--color-buy)' : absScore < 20 ? 'var(--color-caution)' : 'var(--color-avoid)'
+            '--width': `${Math.min(100, (absScore / 50) * 100)}%`,
+            '--bg': score < 0 ? 'var(--color-buy)' : absScore < 20 ? 'var(--color-caution)' : 'var(--color-avoid)'
           } as any}
         />
       </div>
