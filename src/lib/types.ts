@@ -5,6 +5,8 @@ export interface ScrapedData {
   reviewCount: number | null;
   reviewSnippets: string[];
   timestamps: string[];
+  reviewerNames: string[];
+  isVerified: boolean[];
   blocked: boolean;
 }
 

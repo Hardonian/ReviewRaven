@@ -76,6 +76,24 @@ function extractAmazonData(html: string): Partial<ScrapedData> {
   }
   if (timestamps.length > 0) result.timestamps = timestamps;
 
+  const reviewerNames: string[] = [];
+  const nameRegex = /<span[^>]*class=["']a-profile-name["'][^>]*>([\s\S]*?)<\/span>/gi;
+  let name: RegExpExecArray | null;
+  while ((name = nameRegex.exec(html)) !== null && reviewerNames.length < 10) {
+    const text = sanitizeText(name[1]);
+    if (text) reviewerNames.push(text);
+  }
+  if (reviewerNames.length > 0) result.reviewerNames = reviewerNames;
+
+  const isVerified: boolean[] = [];
+  const verifiedRegex = /<span[^>]*data-hook=["']avp-badge["'][^>]*>([\s\S]*?)<\/span>/gi;
+  let verified: RegExpExecArray | null;
+  while ((verified = verifiedRegex.exec(html)) !== null && isVerified.length < 10) {
+    const text = sanitizeText(verified[1]);
+    isVerified.push(text.toLowerCase().includes('verified purchase'));
+  }
+  if (isVerified.length > 0) result.isVerified = isVerified;
+
   return result;
 }
 
@@ -129,6 +147,8 @@ export async function scrapeProduct(url: string): Promise<ScrapedData> {
     reviewCount: null,
     reviewSnippets: [],
     timestamps: [],
+    reviewerNames: [],
+    isVerified: [],
     blocked: false,
   };
 

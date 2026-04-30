@@ -5,7 +5,16 @@ const GENERIC_PATTERNS = [
   'exactly as described', 'fast shipping', 'good value', 'five stars', 'amazing',
   'perfect gift', 'would buy again', 'very happy', 'so glad', 'must buy',
   'quality product', 'great quality', 'worth the price', 'exceeded expectations',
-  'just what i needed', 'could not be happier',
+  'just what i needed', 'could not be happier', 'amazing perfect incredible',
+  'dear customer', 'hello friends',
+];
+
+const PROMPT_LEAK_PATTERNS = [
+  'as an ai language model',
+  'here is a 5-star review',
+  'i cannot fulfill this request',
+  'i am an ai',
+  'text-based model',
 ];
 
 function analyzeRatingSkew(rating: number | null, reviewCount: number | null): SignalDetail {
@@ -184,6 +193,109 @@ function analyzeKeywordSpam(snippets: string[]): SignalDetail {
   };
 }
 
+function analyzeTemporalSync(timestamps: string[]): SignalDetail {
+  if (!timestamps || timestamps.length < 5) {
+    return { name: 'Temporal Synchronization', score: 0, description: 'Insufficient temporal data' };
+  }
+
+  // Simplified sync detection: if multiple reviews have the same relative time or exact date
+  const counts: Record<string, number> = {};
+  for (const ts of timestamps) {
+    counts[ts] = (counts[ts] || 0) + 1;
+  }
+
+  const maxSync = Math.max(...Object.values(counts));
+  if (maxSync >= 5) {
+    return {
+      name: 'Temporal Synchronization',
+      score: 45,
+      description: 'Multiple reviews posted simultaneously. This suggests a coordinated synthetic burst.',
+    };
+  }
+
+  return { name: 'Temporal Synchronization', score: 0, description: 'Reviews are naturally distributed over time.' };
+}
+
+function analyzeVerifiedRatio(isVerified: boolean[]): SignalDetail {
+  if (!isVerified || isVerified.length < 5) {
+    return { name: 'Verified Purchases', score: 0, description: 'Insufficient verification data' };
+  }
+
+  const verifiedCount = isVerified.filter(v => v).length;
+  const ratio = verifiedCount / isVerified.length;
+
+  if (ratio <= 0.2) {
+    return {
+      name: 'Verified Purchases',
+      score: 40,
+      description: 'Very low ratio of verified purchases (' + (ratio * 100).toFixed(0) + '%). High risk of incentivized bias.',
+    };
+  }
+
+  if (ratio < 0.5) {
+    return {
+      name: 'Verified Purchases',
+      score: 20,
+      description: 'Relatively low ratio of verified purchases. Potential for manipulated feedback.',
+    };
+  }
+
+  return { name: 'Verified Purchases', score: 0, description: 'Healthy ratio of verified purchases detected.' };
+}
+
+function analyzeAuthorPatterns(names: string[]): SignalDetail {
+  if (!names || names.length < 5) {
+    return { name: 'Author Patterns', score: 0, description: 'Insufficient author data' };
+  }
+
+  let sequentialCount = 0;
+  for (let i = 0; i < names.length - 1; i++) {
+    const n1 = names[i].toLowerCase();
+    const n2 = names[i+1].toLowerCase();
+    // Simple sequential detection: John A, John B or User 1, User 2
+    if (n1.substring(0, 5) === n2.substring(0, 5) && n1 !== n2) {
+      sequentialCount++;
+    }
+  }
+
+  if (sequentialCount >= 3) {
+    return {
+      name: 'Author Patterns',
+      score: 35,
+      description: 'Sequential naming patterns detected among reviewers. Highly characteristic of bot farms.',
+    };
+  }
+
+  return { name: 'Author Patterns', score: 0, description: 'Reviewer identities appear organic.' };
+}
+
+function analyzePromptLeaks(snippets: string[]): SignalDetail {
+  if (!snippets || snippets.length === 0) {
+    return { name: 'AI Generation', score: 0, description: 'No text to analyze for AI patterns.' };
+  }
+
+  let leakCount = 0;
+  for (const snippet of snippets) {
+    const lower = snippet.toLowerCase();
+    for (const pattern of PROMPT_LEAK_PATTERNS) {
+      if (lower.includes(pattern)) {
+        leakCount++;
+        break;
+      }
+    }
+  }
+
+  if (leakCount > 0) {
+    return {
+      name: 'AI Generation',
+      score: 100,
+      description: 'Deterministic match for AI prompt leaks (e.g., "As an AI language model"). High confidence bot detection.',
+    };
+  }
+
+  return { name: 'AI Generation', score: 0, description: 'No obvious AI-generated artifacts detected.' };
+}
+
 function analyzeDataQuality(data: ScrapedData): SignalDetail {
   const available = [data.title, data.rating, data.reviewCount, data.ratingCount].filter((v) => v !== null).length;
 
@@ -227,6 +339,10 @@ export function analyzeProduct(data: ScrapedData, url: string): AnalysisResult {
     analyzeGenericContent(data.reviewSnippets),
     analyzeSnippetDiversity(data.reviewSnippets),
     analyzeKeywordSpam(data.reviewSnippets),
+    analyzeTemporalSync(data.timestamps),
+    analyzeVerifiedRatio(data.isVerified),
+    analyzeAuthorPatterns(data.reviewerNames),
+    analyzePromptLeaks(data.reviewSnippets),
     analyzeDataQuality(data),
   ];
 

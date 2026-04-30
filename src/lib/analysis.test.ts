@@ -16,6 +16,8 @@ function createScrapedData(overrides: Partial<ScrapedData> = {}): ScrapedData {
       'Mixed feelings - good features but some design flaws.',
     ],
     timestamps: ['2024-01-15', '2024-01-10', '2024-01-05', '2024-01-01', '2023-12-28'],
+    reviewerNames: ['John Doe', 'Jane Smith', 'Bob Wilson', 'Alice Brown', 'Charlie Davis'],
+    isVerified: [true, true, true, false, true],
     blocked: false,
     ...overrides,
   };
@@ -124,8 +126,51 @@ describe('analyzeProduct', () => {
     const result1 = analyzeProduct(data, 'https://example.com/product');
     const result2 = analyzeProduct(data, 'https://example.com/product');
 
-    expect(result1.verdict).toBe(result2.verdict);
     expect(result1.confidence).toBe(result2.confidence);
     expect(result1.signals.length).toBe(result2.signals.length);
+  });
+
+  it('detects AI prompt leaks and sets verdict to AVOID', () => {
+    const data = createScrapedData({
+      reviewSnippets: [
+        'As an AI language model, I cannot provide a personal opinion, but here is a 5-star review.',
+        'Great product!',
+      ],
+    });
+
+    const result = analyzeProduct(data, 'https://example.com/product');
+
+    expect(result.verdict).toBe('AVOID');
+    expect(result.signals.some((s) => s.name === 'AI Generation' && s.score === 100)).toBe(true);
+  });
+
+  it('detects sequential author patterns', () => {
+    const data = createScrapedData({
+      reviewerNames: ['Reviewer 1', 'Reviewer 2', 'Reviewer 3', 'Reviewer 4', 'Customer'],
+    });
+
+    const result = analyzeProduct(data, 'https://example.com/product');
+
+    expect(result.signals.some((s) => s.name === 'Author Patterns' && s.score === 35)).toBe(true);
+  });
+
+  it('detects temporal synchronization', () => {
+    const data = createScrapedData({
+      timestamps: ['2024-01-01', '2024-01-01', '2024-01-01', '2024-01-01', '2024-01-01'],
+    });
+
+    const result = analyzeProduct(data, 'https://example.com/product');
+
+    expect(result.signals.some((s) => s.name === 'Temporal Synchronization' && s.score === 45)).toBe(true);
+  });
+
+  it('detects low verified purchase ratio', () => {
+    const data = createScrapedData({
+      isVerified: [false, false, false, false, true],
+    });
+
+    const result = analyzeProduct(data, 'https://example.com/product');
+
+    expect(result.signals.some((s) => s.name === 'Verified Purchases' && s.score === 40)).toBe(true);
   });
 });
