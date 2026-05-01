@@ -1,3 +1,4 @@
+import { validateUrl } from '@reviewraven/shared-core';
 import { recordEvent } from '@reviewraven/shared-diagnostics';
 import type { DiagnosticEventType } from '@reviewraven/shared-diagnostics';
 
@@ -40,7 +41,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const url = body.url || 'https://example.com/unknown';
+  let url = 'https://example.com/unknown';
+  if (body.url && typeof body.url === 'string') {
+    const validation = validateUrl(body.url);
+    if (validation.valid) {
+      url = validation.url || url;
+    }
+  }
   recordEvent(body.event as DiagnosticEventType, url);
 
   return Response.json({ ok: true, event: body.event });

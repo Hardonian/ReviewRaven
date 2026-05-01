@@ -16,6 +16,10 @@ export const BLOCKED_IP_PATTERNS = [
   /^127\./,
   /^0\./,
   /^localhost/,
+  /^::1$/,
+  /^fc00/,
+  /^fd00/,
+  /^fe80/,
   /^\[/,
 ];
 

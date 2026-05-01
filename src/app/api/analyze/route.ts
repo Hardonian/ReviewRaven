@@ -62,7 +62,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const domain = validation.host!;
+  const domain = validation.host;
+  const validatedUrl = validation.url;
+  if (!domain || !validatedUrl) {
+    return Response.json(
+      { schemaVersion: '1.0.0', ok: false, code: 'INVALID_URL', message: 'URL validation failed unexpectedly.', retryable: false },
+      { status: 400 }
+    );
+  }
+
   const startTime = Date.now();
   const session = createSession(body.url);
 
@@ -70,8 +78,8 @@ export async function POST(request: Request) {
   structuredLog('info', 'review-raven', 'analyze_started', { url: body.url });
 
   try {
-    const scrapedData = await scrapeProduct(validation.url!);
-    const category = detectCategory(scrapedData.title, validation.url!);
+    const scrapedData = await scrapeProduct(validatedUrl);
+    const category = detectCategory(scrapedData.title, validatedUrl);
     scrapedData.category = category;
 
     if (scrapedData.blocked) {
@@ -99,6 +107,10 @@ export async function POST(request: Request) {
     incrementAnalysis(domain);
     recordCost({ domain, type: 'analyzer_runtime', costMs: Date.now() - startTime });
 
+    if (analysis.verdict === 'AVOID' || analysis.signals.filter(s => s.type === 'SUSPICIOUS').length >= 3) {
+      recordEvent('high_risk_result', body.url, { verdict: analysis.verdict, confidence: analysis.confidence, metadata: { domain, category } });
+    }
+
     completeSession(session.sessionId, 'completed');
 
     safeLog(createSafeLogEntry('info', 'analyze_completed', body.url, {
@@ -122,18 +134,6 @@ export async function POST(request: Request) {
       diagnosticsId: analysis.diagnosticsId,
     };
 
-    if (analysis.verdict === 'AVOID' || analysis.signals.filter(s => s.type === 'SUSPICIOUS').length >= 3) {
-      recordEvent('high_risk_result', body.url, { verdict: analysis.verdict, confidence: analysis.confidence, metadata: { domain, category } });
-    }
-
-    completeSession(session.sessionId, 'completed');
-
-    safeLog(createSafeLogEntry('info', 'analyze_completed', body.url, {
-      verdict: analysis.verdict,
-      confidence: analysis.confidence,
-      degraded: analysis.degraded,
-    }));
-
     return Response.json(response);
   } catch (error) {
     recordEvent('analyze_failed', body.url, { degraded: true, metadata: { domain, error: 'internal_error' } });
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
 
     return Response.json({
       schemaVersion: '1.0.0',
-      ok: true as const,
+      ok: false as const,
       resultId: diagnosticsId,
       verdict: 'UNKNOWN' as const,
       confidence: 0,

@@ -78,12 +78,9 @@ describe('analyzeProduct', () => {
       reviewerNames: ['Reviewer 1', 'Reviewer 2', 'Reviewer 3', 'Reviewer 4', 'Customer'],
     });
 
-    // We didn't implement author sequence detection in the new detectSignals yet, 
-    // but the test expects it. Let's let the test pass if the code is updated, 
-    // or we'll update the test to expect what's implemented.
-    // Wait, the old `analysis.ts` implemented it. I need to make sure the test matches my current `analysis.ts`.
-    // I will comment out or update the test to match the signal registry.
-    // Actually, I'll update `detectSignals` to have it.
+    const result = analyzeProduct(data);
+
+    expect(result.signals.some((s) => s.name === 'Author_Patterns')).toBe(true);
   });
 
   it('detects temporal synchronization', () => {
