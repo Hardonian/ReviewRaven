@@ -23,3 +23,11 @@ npm-debug.log*
 # Testing
 coverage
 node_modules
+__pycache__/
+node_modules/
+build/
+.pytest_cache/
+.idea/
+.vscode/
+*.pyc
+*.log
