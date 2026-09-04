@@ -1,5 +1,9 @@
 # ReviewRaven
 
+<!-- BEGIN: REPO HERO -->
+![ReviewRaven — hero generated locally on the GPU stack](assets/repo-hero.png)
+<!-- END: REPO HERO -->
+
 > Watch the patterns, detect the deception.
 
 ReviewRaven is a single-function B2C app that analyzes product URLs and returns a trust verdict based on review-trust signals.
